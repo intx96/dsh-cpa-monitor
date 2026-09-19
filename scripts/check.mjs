@@ -131,7 +131,7 @@ check("the installed schema version matches the pin", installedSchema === schema
 //#endregion
 
 //#region test harness presence
-const testEnv = join(packageDir, "..", ".test-env", "node_modules");
+const testEnv = join(packageDir, ".test-env", "node_modules");
 check("render harness installed (.test-env)", existsSync(join(testEnv, "react")) && existsSync(join(testEnv, "jsdom")), testEnv);
 for (const name of ["snapshot.json", "error-logs.json", "error-log.txt", "error-log-parsed.json"]) {
 	check(`fixture ${name} present`, existsSync(join(packageDir, "test", "fixtures", name)));

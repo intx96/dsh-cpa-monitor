@@ -217,10 +217,10 @@ npm run fixtures                  # 从真机重抓离线 fixture（快照 + 错
 | `scripts/patch-config.mjs` | 用真 YAML 解析读本包补丁（正则会被注释里的示例值骗到） |
 | `scripts/capture-fixtures.mjs` | 从真机重抓 `test/fixtures/`（快照 / 错误日志列表 / 单篇正文与解析结果） |
 
-渲染测试依赖工作区级的 `../.test-env`（React 18 + jsdom，刻意不装进插件包）：
+渲染测试依赖本包内的 `.test-env`（React 18 + jsdom，`files` 白名单不含它，不会进 npm 包）：
 
 ```bash
-(cd ../.test-env && npm --cache ../.npm-cache install react@18 react-dom@18 jsdom)
+(cd .test-env && npm --cache ../.npm-cache install react@18 react-dom@18 jsdom)
 ```
 
 ### 目录

@@ -7,7 +7,7 @@
  * panel renders a REAL captured snapshot (test/fixtures/snapshot.json) into a
  * jsdom document with React 18 — the same major the DSH web shell ships.
  *
- * React, react-dom, and jsdom come from the workspace-level `../.test-env`
+ * React, react-dom, and jsdom come from this package's own `.test-env`
  * install, so the plugin package itself stays dependency-free.
  *
  *   node scripts/smoke-client.mjs
@@ -21,7 +21,7 @@ import { homedir } from "node:os";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageDir = join(here, "..");
-const testEnv = join(packageDir, "..", ".test-env");
+const testEnv = join(packageDir, ".test-env");
 const require = createRequire(join(testEnv, "package.json"));
 
 const checks = [];
@@ -95,7 +95,7 @@ function createScopeStub(options = {}) {
 
 //#region environment
 if (!existsSync(join(testEnv, "node_modules", "react"))) {
-	process.stderr.write(`smoke-client: missing render harness at ${testEnv}\nrun: (cd ../.test-env && npm --cache ../.npm-cache install react@18 react-dom@18 jsdom)\n`);
+	process.stderr.write(`smoke-client: missing render harness at ${testEnv}\nrun: (cd .test-env && npm --cache ../.npm-cache install react@18 react-dom@18 jsdom)\n`);
 	process.exit(2);
 }
 

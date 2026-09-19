@@ -8,7 +8,7 @@ node_modules/
 .pnpm-store/
 
 # Local dev harness for the render tests (React + jsdom), installed on demand:
-#   (cd ../.test-env && npm --cache ../.npm-cache install react@18 react-dom@18 jsdom)
+#   (cd .test-env && npm --cache ../.npm-cache install react@18 react-dom@18 jsdom)
 .test-env/
 .install-probe/
 
