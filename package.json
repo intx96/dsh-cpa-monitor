@@ -1,0 +1,63 @@
+{
+  "name": "dsh-cpa-monitor",
+  "version": "0.1.0",
+  "description": "DSH web plugin: a CLIProxyAPI (CPA) Codex account monitor — sidebar quota badge (5h/7d), account enable/disable and note/priority editing, failure diagnostics from CPA error logs, and a Settings card for the endpoint and proxies",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cliproxyapi",
+    "cpa",
+    "codex",
+    "quota",
+    "sidebar",
+    "monitor",
+    "status-panel"
+  ],
+  "license": "MIT",
+  "author": "skyrs-cn",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skyrs-cn/dsh-cpa-monitor.git"
+  },
+  "homepage": "https://github.com/skyrs-cn/dsh-cpa-monitor#readme",
+  "bugs": {
+    "url": "https://github.com/skyrs-cn/dsh-cpa-monitor/issues"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    }
+  },
+  "scripts": {
+    "check": "node scripts/check.mjs && node --check lib/net.js && node --check lib/cpa.js && node --check lib/schema.js && node --check lib/index.js && node --check lib/client.js",
+    "test": "node scripts/smoke-server.mjs && node scripts/smoke-client.mjs",
+    "probe": "node scripts/probe.mjs",
+    "fixtures": "node scripts/capture-fixtures.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "3.18.2"
+  }
+}

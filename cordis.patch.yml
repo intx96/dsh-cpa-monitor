@@ -1,0 +1,68 @@
+# Mount the CPA account-status server plugin when this package is registered as a
+# DeepSeek Harness profile bundle.
+#
+# The `config` block below is the COMPOSITION layer: it ships a working default
+# and is what every field reverts to when cleared in the UI.
+#
+# THIS FILE IS SAFE TO COMMIT: it carries a placeholder endpoint and NO
+# management key. A deployment's real endpoint and key belong to the user layer
+# (`$DSH_HOME/settings.yaml`), which is exactly where the Settings card writes
+# them — see the README's configuration section.
+#
+# PREFERRED WAY TO CHANGE ANYTHING: Settings → Plugins → "CPA account status" in
+# the dsh web GUI. Those edits land in `$DSH_HOME/settings.yaml` under the
+# `cpa-monitor:` namespace and apply live — no restart. Fields left untouched
+# there keep inheriting this block.
+#
+# Editing this file is the deployment-wide alternative. Without the GUI (or to
+# change the default for a fresh profile), add an id-targeted entry to your
+# profile patch (`$DSH_HOME/profiles/web/cordis.patch.yml`):
+#
+#   - id: cpa-monitor
+#     config:
+#       baseURL: "https://cpa.example.com:8317"
+#       proxies: ["http://127.0.0.1:1080"]
+#
+# NOTE: an id-targeted patch REPLACES the whole `config` object, so repeat every
+# field you still want; `dsh web --dump-config` prints the composed result.
+- insert:
+    - id: cpa-monitor
+      name: dsh-cpa-monitor
+      config:
+        # CLIProxyAPI management endpoint. Placeholder on purpose: set the real
+        # one in Settings → Plugins → "CPA account status".
+        baseURL: "https://cpa.example.com:8317"
+        # The management key is intentionally absent. Provide it either in the
+        # Settings card (stored in the user layer) or through the
+        # DSH_CPA_MANAGEMENT_KEY environment variable — never in this file.
+        # Outbound proxy candidates. A cold start probes every candidate
+        # CONCURRENTLY and the first success wins, so order only breaks ties and
+        # a dead candidate costs no latency; the winner is then reused over
+        # keep-alive connections. Empty list = connect directly.
+        # Measured on one host: a proxy that accepts TCP but never completes a
+        # tunnel costs nothing here — the race resolves on the working candidate
+        # and the dead one is skipped for the life of the process.
+        proxies:
+          - "http://127.0.0.1:1081"
+          - "http://127.0.0.1:1080"
+        # Also try a direct connection once every proxy has failed. Off by
+        # default: on a fenced network a direct leg only adds its own timeout.
+        # Implicitly true when `proxies` is empty, since there is nothing else.
+        allowDirect: false
+        # Per-attempt cap for the proxy handshake / TLS leg. Kept separate from
+        # `timeoutMs` so a hanging proxy cannot hold the whole refresh hostage,
+        # while a slow-but-working handshake (measured 1.3–4s through 1080) still
+        # has room. Must not exceed `timeoutMs`.
+        connectTimeoutMs: 10000
+        # Only monitor CPA credentials of this provider. Empty = all of them.
+        providerFilter: "codex"
+        # Include accounts that are disabled in CPA (shown greyed out).
+        includeDisabled: true
+        # Background refresh period, milliseconds.
+        refreshIntervalMs: 300000
+        # Per-request timeout, milliseconds.
+        timeoutMs: 20000
+        # Timezone used to render window reset times (the py script used Asia/Shanghai).
+        timeZone: "Asia/Shanghai"
+        # Skip TLS verification; only for a CPA behind a self-signed certificate.
+        insecure: false

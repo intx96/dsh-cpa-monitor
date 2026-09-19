@@ -1,0 +1,36 @@
+# Ignore rules for the dsh-cpa-monitor package.
+
+# Dependencies — a fresh clone installs its own (`npm install`).
+# Only `@deepseek-ai/schemastery` is a real dependency, and it must match the
+# harness's own version, so a lockfile is committed and the tree is not.
+node_modules/
+.npm-cache/
+.pnpm-store/
+
+# Local dev harness for the render tests (React + jsdom), installed on demand:
+#   (cd ../.test-env && npm --cache ../.npm-cache install react@18 react-dom@18 jsdom)
+.test-env/
+.install-probe/
+
+# Local configuration. The committed `cordis.patch.yml` is secret-free by design:
+# a deployment's real endpoint and management key live in the user layer
+# (`$DSH_HOME/settings.yaml`) or in DSH_CPA_MANAGEMENT_KEY. Anything matching
+# these names is a local override and must never be published.
+cordis.patch.local.yml
+*.local.yml
+*.local.yaml
+.env
+.env.*
+*.pem
+*.key
+*.p12
+credentials.json
+
+# `npm pack` output (dry-run leaves nothing, a real pack leaves a tarball)
+*.tgz
+
+# Editor / OS noise
+.DS_Store
+*.swp
+.idea/
+.vscode/

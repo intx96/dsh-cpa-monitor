@@ -1,0 +1,75 @@
+{
+  "files": [
+    {
+      "name": "error-v1-chat-completions-2026-09-15T050415-f54cb5c5.log",
+      "size": 3423,
+      "modified": 1789448655,
+      "endpoint": "chat-completions",
+      "at": 1789448655000
+    },
+    {
+      "name": "error-v1-responses-2026-09-13T043116-52670a38.log",
+      "size": 47580,
+      "modified": 1789273876,
+      "endpoint": "responses",
+      "at": 1789273876000
+    },
+    {
+      "name": "error-v1-responses-2026-09-13T042854-cc640265.log",
+      "size": 46604,
+      "modified": 1789273734,
+      "endpoint": "responses",
+      "at": 1789273734000
+    },
+    {
+      "name": "error-v1-chat-completions-2026-09-13T041200-66313649.log",
+      "size": 1233,
+      "modified": 1789272720,
+      "endpoint": "chat-completions",
+      "at": 1789272720000
+    },
+    {
+      "name": "error-v1-chat-completions-2026-09-13T041157-b7f74922.log",
+      "size": 1241,
+      "modified": 1789272717,
+      "endpoint": "chat-completions",
+      "at": 1789272717000
+    },
+    {
+      "name": "error-v1-chat-completions-2026-09-12T171508-e7539618.log",
+      "size": 1234,
+      "modified": 1789233308,
+      "endpoint": "chat-completions",
+      "at": 1789233308000
+    },
+    {
+      "name": "error-v1-chat-completions-2026-09-12T171505-721ca1d1.log",
+      "size": 1241,
+      "modified": 1789233305,
+      "endpoint": "chat-completions",
+      "at": 1789233305000
+    },
+    {
+      "name": "error-v1-responses-2026-09-12T171503-295594e0.log",
+      "size": 2846,
+      "modified": 1789233303,
+      "endpoint": "responses",
+      "at": 1789233303000
+    },
+    {
+      "name": "error-v1-chat-completions-2026-09-12T171210-33dff2f4.log",
+      "size": 2329,
+      "modified": 1789233130,
+      "endpoint": "chat-completions",
+      "at": 1789233130000
+    },
+    {
+      "name": "error-v1-chat-completions-2026-09-12T171149-65541418.log",
+      "size": 1161,
+      "modified": 1789233109,
+      "endpoint": "chat-completions",
+      "at": 1789233109000
+    }
+  ],
+  "requestLogEnabled": false
+}

@@ -1,0 +1,45 @@
+{
+  "name": "error-v1-chat-completions-2026-09-15T050415-f54cb5c5.log",
+  "endpoint": "/v1/chat/completions",
+  "method": "POST",
+  "at": 1789448655000,
+  "upstreamUrl": "https://chatgpt.com/backend-api/codex/responses",
+  "model": "gpt-5.6-luna",
+  "attempts": [
+    {
+      "provider": "codex",
+      "authId": "codex-bbbb2222-bravo@example.com-free.json",
+      "label": "bravo@example.com",
+      "accountId": "22222222-2222-4222-8222-222222222222",
+      "upstreamUrl": "https://chatgpt.com/backend-api/codex/responses"
+    },
+    {
+      "provider": "codex",
+      "authId": "codex-aaaa1111-alpha@example.com-free.json",
+      "label": "alpha@example.com",
+      "accountId": "11111111-1111-4111-8111-111111111111",
+      "upstreamUrl": "https://chatgpt.com/backend-api/codex/responses"
+    }
+  ],
+  "status": 502,
+  "errorType": "service_unavailable_error",
+  "errorCode": "server_is_overloaded",
+  "errorMessage": "Our servers are currently overloaded. Please try again later.",
+  "accounts": [
+    {
+      "provider": "codex",
+      "authId": "codex-bbbb2222-bravo@example.com-free.json",
+      "label": "bravo@example.com",
+      "accountId": "22222222-2222-4222-8222-222222222222"
+    },
+    {
+      "provider": "codex",
+      "authId": "codex-aaaa1111-alpha@example.com-free.json",
+      "label": "alpha@example.com",
+      "accountId": "11111111-1111-4111-8111-111111111111"
+    }
+  ],
+  "size": 3389,
+  "truncated": false,
+  "text": "=== REQUEST INFO ===\nVersion: 7.2.159\nURL: /v1/chat/completions\nMethod: POST\nDownstream Transport: http\nUpstream Transport: http\nTimestamp: 2026-09-15T05:04:12.235960194Z\n\n\n=== HEADERS ===\nUser-Agent: Go-http-client/2.0\nContent-Type: application/json\nAccept: \nAuthorization: Bearer sk-…redacted\nContent-Length: 110\nAccept-Encoding: gzip\n\n\n=== REQUEST BODY ===\n{\"model\":\"gpt-5.6-luna\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}],\"stream\":false,\"max_completion_tokens\":16}\n\n\n=== API REQUEST 1 ===\nTimestamp: 2026-09-15T05:04:12.236679448Z\nUpstream URL: https://chatgpt.com/backend-api/codex/responses\nHTTP Method: POST\nAuth: provider=codex, auth_id=codex-bbbb2222-bravo@example.com-free.json, label=bravo@example.com, type=oauth\n\nHeaders:\nAccept: text/event-stream\nAuthorization: Bearer eyJ…redacted\nChatgpt-Account-Id: 22222222-2222-4222-8222-222222222222\nConnection: Keep-Alive\nContent-Type: application/json\nOriginator: codex-tui\nSession-Id: 44444444-4444-4444-8444-444444444444\nUser-Agent: codex-tui/0.154.0 (Mac OS 26.5.2; arm64) iTerm.app/3.6.11 (codex-tui; 0.154.0)\n\nBody:\n{\"instructions\":\"\",\"stream\":true,\"reasoning\":{\"effort\":\"medium\"},\"parallel_tool_calls\":true,\"include\":[\"reasoning.encrypted_content\"],\"model\":\"gpt-5.6-luna\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"hello\"}]}],\"store\":false,\"tools\":[{\"type\":\"image_generation\",\"output_format\":\"png\"}],\"prompt_cache_key\":\"44444444-4444-4444-8444-444444444444\"}\n\n=== API REQUEST 2 ===\nTimestamp: 2026-09-15T05:04:14.152427504Z\nUpstream URL: https://chatgpt.com/backend-api/codex/responses\nHTTP Method: POST\nAuth: provider=codex, auth_id=codex-aaaa1111-alpha@example.com-free.json, label=alpha@example.com, type=oauth\n\nHeaders:\nAccept: text/event-stream\nAuthorization: Bearer eyJ…redacted\nChatgpt-Account-Id: 11111111-1111-4111-8111-111111111111\nConnection: Keep-Alive\nContent-Type: application/json\nOriginator: codex-tui\nSession-Id: 44444444-4444-4444-8444-444444444444\nUser-Agent: codex-tui/0.154.0 (Mac OS 26.5.2; arm64) iTerm.app/3.6.11 (codex-tui; 0.154.0)\n\nBody:\n{\"instructions\":\"\",\"stream\":true,\"reasoning\":{\"effort\":\"medium\"},\"parallel_tool_calls\":true,\"include\":[\"reasoning.encrypted_content\"],\"model\":\"gpt-5.6-luna\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"hello\"}]}],\"store\":false,\"tools\":[{\"type\":\"image_generation\",\"output_format\":\"png\"}],\"prompt_cache_key\":\"44444444-4444-4444-8444-444444444444\"}\n\n\n=== API RESPONSE ===\nTimestamp: 2026-09-15T05:04:15.614300869Z\n{\"error\":{\"type\":\"service_unavailable_error\",\"code\":\"server_is_overloaded\",\"message\":\"Our servers are currently overloaded. Please try again later.\",\"param\":null},\"sequence_number\":2}\n\n\n=== RESPONSE ===\nStatus: 502\nAccess-Control-Allow-Origin: *\nAccess-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS\nX-Cpa-Trace-Id: 20260915050414-aaaaaaaaaaaaaaaa-f54cb5c5\nAccess-Control-Allow-Headers: *\nAccess-Control-Expose-Headers: X-CPA-TRACE-ID, X-CPA-VERSION, X-CPA-COMMIT, X-CPA-BUILD-DATE, X-CPA-SUPPORT-PLUGIN, X-CPA-HOME-VERSION, X-CPA-HOME-BUILD-DATE, X-SERVER-VERSION, X-SERVER-BUILD-DATE, Location, Retry-After, X-Request-Id, OpenAI-Request-Id\nContent-Type: application/json\n\n{\"error\":{\"type\":\"service_unavailable_error\",\"code\":\"server_is_overloaded\",\"message\":\"Our servers are currently overloaded. Please try again later.\",\"param\":null},\"sequence_number\":2}\n"
+}

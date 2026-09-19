@@ -1,0 +1,76 @@
+=== REQUEST INFO ===
+Version: 7.2.159
+URL: /v1/chat/completions
+Method: POST
+Downstream Transport: http
+Upstream Transport: http
+Timestamp: 2026-09-15T05:04:12.235960194Z
+
+
+=== HEADERS ===
+User-Agent: Go-http-client/2.0
+Content-Type: application/json
+Accept: 
+Authorization: Bearer sk-…redacted
+Content-Length: 110
+Accept-Encoding: gzip
+
+
+=== REQUEST BODY ===
+{"model":"gpt-5.6-luna","messages":[{"role":"user","content":"hello"}],"stream":false,"max_completion_tokens":16}
+
+
+=== API REQUEST 1 ===
+Timestamp: 2026-09-15T05:04:12.236679448Z
+Upstream URL: https://chatgpt.com/backend-api/codex/responses
+HTTP Method: POST
+Auth: provider=codex, auth_id=codex-bbbb2222-bravo@example.com-free.json, label=bravo@example.com, type=oauth
+
+Headers:
+Accept: text/event-stream
+Authorization: Bearer eyJ…redacted
+Chatgpt-Account-Id: 22222222-2222-4222-8222-222222222222
+Connection: Keep-Alive
+Content-Type: application/json
+Originator: codex-tui
+Session-Id: 44444444-4444-4444-8444-444444444444
+User-Agent: codex-tui/0.154.0 (Mac OS 26.5.2; arm64) iTerm.app/3.6.11 (codex-tui; 0.154.0)
+
+Body:
+{"instructions":"","stream":true,"reasoning":{"effort":"medium"},"parallel_tool_calls":true,"include":["reasoning.encrypted_content"],"model":"gpt-5.6-luna","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}],"store":false,"tools":[{"type":"image_generation","output_format":"png"}],"prompt_cache_key":"44444444-4444-4444-8444-444444444444"}
+
+=== API REQUEST 2 ===
+Timestamp: 2026-09-15T05:04:14.152427504Z
+Upstream URL: https://chatgpt.com/backend-api/codex/responses
+HTTP Method: POST
+Auth: provider=codex, auth_id=codex-aaaa1111-alpha@example.com-free.json, label=alpha@example.com, type=oauth
+
+Headers:
+Accept: text/event-stream
+Authorization: Bearer eyJ…redacted
+Chatgpt-Account-Id: 11111111-1111-4111-8111-111111111111
+Connection: Keep-Alive
+Content-Type: application/json
+Originator: codex-tui
+Session-Id: 44444444-4444-4444-8444-444444444444
+User-Agent: codex-tui/0.154.0 (Mac OS 26.5.2; arm64) iTerm.app/3.6.11 (codex-tui; 0.154.0)
+
+Body:
+{"instructions":"","stream":true,"reasoning":{"effort":"medium"},"parallel_tool_calls":true,"include":["reasoning.encrypted_content"],"model":"gpt-5.6-luna","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}],"store":false,"tools":[{"type":"image_generation","output_format":"png"}],"prompt_cache_key":"44444444-4444-4444-8444-444444444444"}
+
+
+=== API RESPONSE ===
+Timestamp: 2026-09-15T05:04:15.614300869Z
+{"error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later.","param":null},"sequence_number":2}
+
+
+=== RESPONSE ===
+Status: 502
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS
+X-Cpa-Trace-Id: 20260915050414-aaaaaaaaaaaaaaaa-f54cb5c5
+Access-Control-Allow-Headers: *
+Access-Control-Expose-Headers: X-CPA-TRACE-ID, X-CPA-VERSION, X-CPA-COMMIT, X-CPA-BUILD-DATE, X-CPA-SUPPORT-PLUGIN, X-CPA-HOME-VERSION, X-CPA-HOME-BUILD-DATE, X-SERVER-VERSION, X-SERVER-BUILD-DATE, Location, Retry-After, X-Request-Id, OpenAI-Request-Id
+Content-Type: application/json
+
+{"error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later.","param":null},"sequence_number":2}

@@ -1,0 +1,532 @@
+{
+  "ok": true,
+  "source": "cpa",
+  "baseURL": "https://cpa.example.com:8317",
+  "providerFilter": "codex",
+  "cpa": {
+    "version": "7.2.159",
+    "commit": "ac02da6c",
+    "buildDate": "2026-09-12T18:00:52Z",
+    "homeVersion": null,
+    "latestVersion": "v7.3.7",
+    "updateAvailable": true
+  },
+  "proxy": "http://127.0.0.1:1080",
+  "transport": [
+    "http://127.0.0.1:1080: ok in 958ms",
+    "http://127.0.0.1:1080: ok in 1253ms",
+    "http://127.0.0.1:1080: ok in 4223ms"
+  ],
+  "fetchedAt": 1789659482025,
+  "durationMs": 5343,
+  "accounts": [
+    {
+      "authIndex": "aaaaaaaaaaaaaaaa",
+      "name": "codex-aaaa1111-alpha@example.com-free.json",
+      "email": "alpha@example.com",
+      "accountId": "11111111-1111-4111-8111-111111111111",
+      "provider": "codex",
+      "status": "active",
+      "statusMessage": "",
+      "disabled": false,
+      "unavailable": false,
+      "usable": true,
+      "plan": "plus",
+      "priority": 5,
+      "note": "",
+      "updatedAt": "2026-09-18T02:21:07.842228687Z",
+      "success": 909,
+      "failed": 4,
+      "recentRequests": [
+        {
+          "time": "23:10-23:20",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "23:20-23:30",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "23:30-23:40",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "23:40-23:50",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "23:50-00:00",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "00:00-00:10",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "00:10-00:20",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "00:20-00:30",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "00:30-00:40",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "00:40-00:50",
+          "success": 3,
+          "failed": 0
+        },
+        {
+          "time": "00:50-01:00",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "01:00-01:10",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "01:10-01:20",
+          "success": 11,
+          "failed": 0
+        },
+        {
+          "time": "01:20-01:30",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "01:30-01:40",
+          "success": 4,
+          "failed": 0
+        },
+        {
+          "time": "01:40-01:50",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "01:50-02:00",
+          "success": 2,
+          "failed": 0
+        },
+        {
+          "time": "02:00-02:10",
+          "success": 3,
+          "failed": 0
+        },
+        {
+          "time": "02:10-02:20",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "02:20-02:30",
+          "success": 0,
+          "failed": 0
+        }
+      ],
+      "windows": [
+        {
+          "label": "5h",
+          "windowSeconds": 18000,
+          "usedPercent": 4,
+          "remaining": 96,
+          "resetAt": 1789710091,
+          "resetText": "09/18 13:41",
+          "resetInSeconds": 11630
+        },
+        {
+          "label": "7d",
+          "windowSeconds": 604800,
+          "usedPercent": 92,
+          "remaining": 8,
+          "resetAt": 1789837947,
+          "resetText": "09/20 01:12",
+          "resetInSeconds": 139486
+        }
+      ],
+      "short": {
+        "label": "5h",
+        "windowSeconds": 18000,
+        "usedPercent": 4,
+        "remaining": 96,
+        "resetAt": 1789710091,
+        "resetText": "09/18 13:41",
+        "resetInSeconds": 11630
+      },
+      "long": {
+        "label": "7d",
+        "windowSeconds": 604800,
+        "usedPercent": 92,
+        "remaining": 8,
+        "resetAt": 1789837947,
+        "resetText": "09/20 01:12",
+        "resetInSeconds": 139486
+      },
+      "summary": "96%/8%-09/20 01:12",
+      "minRemaining": 8,
+      "limitReached": false,
+      "allowed": true,
+      "rateLimitReachedType": null,
+      "credits": {
+        "hasCredits": false,
+        "unlimited": false,
+        "balance": "0",
+        "overageLimitReached": false
+      },
+      "resetCredits": 1,
+      "error": null
+    },
+    {
+      "authIndex": "bbbbbbbbbbbbbbbb",
+      "name": "codex-bbbb2222-bravo@example.com-free.json",
+      "email": "bravo@example.com",
+      "accountId": "22222222-2222-4222-8222-222222222222",
+      "provider": "codex",
+      "status": "active",
+      "statusMessage": "",
+      "disabled": false,
+      "unavailable": false,
+      "usable": true,
+      "plan": "plus",
+      "priority": 6,
+      "note": "",
+      "updatedAt": "2026-09-18T02:21:07.843120603Z",
+      "success": 1062,
+      "failed": 5,
+      "recentRequests": [
+        {
+          "time": "23:10-23:20",
+          "success": 1,
+          "failed": 0
+        },
+        {
+          "time": "23:20-23:30",
+          "success": 1,
+          "failed": 0
+        },
+        {
+          "time": "23:30-23:40",
+          "success": 1,
+          "failed": 0
+        },
+        {
+          "time": "23:40-23:50",
+          "success": 1,
+          "failed": 0
+        },
+        {
+          "time": "23:50-00:00",
+          "success": 1,
+          "failed": 0
+        },
+        {
+          "time": "00:00-00:10",
+          "success": 1,
+          "failed": 0
+        },
+        {
+          "time": "00:10-00:20",
+          "success": 1,
+          "failed": 0
+        },
+        {
+          "time": "00:20-00:30",
+          "success": 1,
+          "failed": 0
+        },
+        {
+          "time": "00:30-00:40",
+          "success": 1,
+          "failed": 0
+        },
+        {
+          "time": "00:40-00:50",
+          "success": 6,
+          "failed": 0
+        },
+        {
+          "time": "00:50-01:00",
+          "success": 1,
+          "failed": 0
+        },
+        {
+          "time": "01:00-01:10",
+          "success": 1,
+          "failed": 0
+        },
+        {
+          "time": "01:10-01:20",
+          "success": 1,
+          "failed": 0
+        },
+        {
+          "time": "01:20-01:30",
+          "success": 1,
+          "failed": 0
+        },
+        {
+          "time": "01:30-01:40",
+          "success": 1,
+          "failed": 0
+        },
+        {
+          "time": "01:40-01:50",
+          "success": 1,
+          "failed": 0
+        },
+        {
+          "time": "01:50-02:00",
+          "success": 3,
+          "failed": 0
+        },
+        {
+          "time": "02:00-02:10",
+          "success": 2,
+          "failed": 0
+        },
+        {
+          "time": "02:10-02:20",
+          "success": 1,
+          "failed": 0
+        },
+        {
+          "time": "02:20-02:30",
+          "success": 0,
+          "failed": 0
+        }
+      ],
+      "windows": [
+        {
+          "label": "5h",
+          "windowSeconds": 18000,
+          "usedPercent": 4,
+          "remaining": 96,
+          "resetAt": 1789710081,
+          "resetText": "09/18 13:41",
+          "resetInSeconds": 11620
+        },
+        {
+          "label": "7d",
+          "windowSeconds": 604800,
+          "usedPercent": 83,
+          "remaining": 17,
+          "resetAt": 1789806697,
+          "resetText": "09/19 16:31",
+          "resetInSeconds": 108236
+        }
+      ],
+      "short": {
+        "label": "5h",
+        "windowSeconds": 18000,
+        "usedPercent": 4,
+        "remaining": 96,
+        "resetAt": 1789710081,
+        "resetText": "09/18 13:41",
+        "resetInSeconds": 11620
+      },
+      "long": {
+        "label": "7d",
+        "windowSeconds": 604800,
+        "usedPercent": 83,
+        "remaining": 17,
+        "resetAt": 1789806697,
+        "resetText": "09/19 16:31",
+        "resetInSeconds": 108236
+      },
+      "summary": "96%/17%-09/19 16:31",
+      "minRemaining": 17,
+      "limitReached": false,
+      "allowed": true,
+      "rateLimitReachedType": null,
+      "credits": {
+        "hasCredits": false,
+        "unlimited": false,
+        "balance": "0",
+        "overageLimitReached": false
+      },
+      "resetCredits": 2,
+      "error": null
+    },
+    {
+      "authIndex": "cccccccccccccccc",
+      "name": "codex-cccc3333-charlie@example.com-free.json",
+      "email": "charlie@example.com",
+      "accountId": "33333333-3333-4333-8333-333333333333",
+      "provider": "codex",
+      "status": "disabled",
+      "statusMessage": "",
+      "disabled": true,
+      "unavailable": false,
+      "usable": false,
+      "plan": "free",
+      "priority": 0,
+      "note": "",
+      "updatedAt": "2026-09-17T15:14:11.987577051Z",
+      "success": 0,
+      "failed": 0,
+      "recentRequests": [
+        {
+          "time": "23:10-23:20",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "23:20-23:30",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "23:30-23:40",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "23:40-23:50",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "23:50-00:00",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "00:00-00:10",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "00:10-00:20",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "00:20-00:30",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "00:30-00:40",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "00:40-00:50",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "00:50-01:00",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "01:00-01:10",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "01:10-01:20",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "01:20-01:30",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "01:30-01:40",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "01:40-01:50",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "01:50-02:00",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "02:00-02:10",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "02:10-02:20",
+          "success": 0,
+          "failed": 0
+        },
+        {
+          "time": "02:20-02:30",
+          "success": 0,
+          "failed": 0
+        }
+      ],
+      "windows": [
+        {
+          "label": "30d",
+          "windowSeconds": 2592000,
+          "usedPercent": 100,
+          "remaining": 0,
+          "resetAt": 1791264814,
+          "resetText": "10/06 13:33",
+          "resetInSeconds": 1566351
+        }
+      ],
+      "short": null,
+      "long": {
+        "label": "30d",
+        "windowSeconds": 2592000,
+        "usedPercent": 100,
+        "remaining": 0,
+        "resetAt": 1791264814,
+        "resetText": "10/06 13:33",
+        "resetInSeconds": 1566351
+      },
+      "summary": "—/0%-10/06 13:33",
+      "minRemaining": 0,
+      "limitReached": true,
+      "allowed": false,
+      "rateLimitReachedType": {
+        "type": "rate_limit_reached",
+        "details": "default"
+      },
+      "credits": {
+        "hasCredits": false,
+        "unlimited": false,
+        "balance": null,
+        "overageLimitReached": false
+      },
+      "resetCredits": 0,
+      "error": null
+    }
+  ],
+  "counts": {
+    "total": 3,
+    "active": 2,
+    "error": 0,
+    "disabled": 1
+  },
+  "minRemaining": 8,
+  "attention": 1,
+  "errors": []
+}
