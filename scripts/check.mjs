@@ -131,8 +131,15 @@ check("the installed schema version matches the pin", installedSchema === schema
 //#endregion
 
 //#region test harness presence
+// The render harness is a development convenience, not something the package
+// ships — a fresh clone legitimately has none, so this reports rather than fails.
 const testEnv = join(packageDir, ".test-env", "node_modules");
-check("render harness installed (.test-env)", existsSync(join(testEnv, "react")) && existsSync(join(testEnv, "jsdom")), testEnv);
+const harness = existsSync(join(testEnv, "react")) && existsSync(join(testEnv, "jsdom"));
+notes.push(
+	harness
+		? "  note  render harness present, so `npm test` can run the client suite"
+		: "  note  no render harness (`.test-env`): the server suite runs, the client suite needs (cd .test-env && npm install react@18 react-dom@18 jsdom)"
+);
 for (const name of ["snapshot.json", "error-logs.json", "error-log.txt", "error-log-parsed.json"]) {
 	check(`fixture ${name} present`, existsSync(join(packageDir, "test", "fixtures", name)));
 }
