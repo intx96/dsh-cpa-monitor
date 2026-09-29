@@ -15,14 +15,14 @@
     "status-panel"
   ],
   "license": "MIT",
-  "author": "skyrs-cn",
+  "author": "intx96 (https://github.com/intx96)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/skyrs-cn/dsh-cpa-monitor.git"
+    "url": "git+https://github.com/intx96/dsh-cpa-monitor.git"
   },
-  "homepage": "https://github.com/skyrs-cn/dsh-cpa-monitor#readme",
+  "homepage": "https://github.com/intx96/dsh-cpa-monitor#readme",
   "bugs": {
-    "url": "https://github.com/skyrs-cn/dsh-cpa-monitor/issues"
+    "url": "https://github.com/intx96/dsh-cpa-monitor/issues"
   },
   "type": "module",
   "main": "lib/index.js",

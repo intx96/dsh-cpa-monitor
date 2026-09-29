@@ -263,4 +263,4 @@ profile 插件用 `link:` 装，包的真实路径在**本仓库**里、不在 p
 
 ## 许可
 
-[MIT](./LICENSE) © 2026 skyrs-cn
+[MIT](./LICENSE) © 2026 intx96
