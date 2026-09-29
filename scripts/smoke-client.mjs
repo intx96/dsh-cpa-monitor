@@ -225,6 +225,7 @@ const scopeStub = createScopeStub({
 		allowDirect: false,
 		providerFilter: "codex",
 		includeDisabled: true,
+		badgeMode: "lowest",
 		refreshIntervalMs: 300000,
 		timeoutMs: 20000,
 		connectTimeoutMs: 10000,
@@ -368,11 +369,33 @@ check(
 	badgeOf([accountFixture("free", [["30d", 12]])]) === "free:long",
 	badgeOf([accountFixture("free", [["30d", 12]])])
 );
-const textOf = (windows) => exports.badgeText(accountFixture("a", windows));
-check("the value is the short/long remaining pair", textOf([["5h", 100], ["7d", 9]]) === "100%/9%", textOf([["5h", 100], ["7d", 9]]));
-check("fractions round to whole percents", textOf([["5h", 99.6], ["7d", 8.4]]) === "100%/8%", textOf([["5h", 99.6], ["7d", 8.4]]));
-check("a missing long window is a placeholder", textOf([["5h", 100]]) === "100%/—", textOf([["5h", 100]]));
-check("a missing short window is a placeholder", textOf([["30d", 65]]) === "—/65%", textOf([["30d", 65]]));
+const form = (values) => exports.remainingText(values);
+check("the value is the 5h/7d pair when nothing reports 30d", form({ "5h": 100, "7d": 9, "30d": null }) === "100%/9%", form({ "5h": 100, "7d": 9, "30d": null }));
+check("a 30d window extends the format to three segments", form({ "5h": 100, "7d": 9, "30d": 65 }) === "100%/9%/65%", form({ "5h": 100, "7d": 9, "30d": 65 }));
+check("fractions round to whole percents", form({ "5h": 99.6, "7d": 8.4, "30d": null }) === "100%/8%", form({ "5h": 99.6, "7d": 8.4, "30d": null }));
+check("a missing 5h or 7d renders as a dash", form({ "5h": null, "7d": null, "30d": 65 }) === "-/-/65%", form({ "5h": null, "7d": null, "30d": 65 }));
+check("a missing 7d alone still shows the 30d segment", form({ "5h": 100, "7d": null, "30d": 12 }) === "100%/-/12%", form({ "5h": 100, "7d": null, "30d": 12 }));
+check("no values at all is all dashes", form({ "5h": null, "7d": null, "30d": null }) === "-/-", form({ "5h": null, "7d": null, "30d": null }));
+
+// sums: one window per account, disabled accounts contribute nothing
+const pooled = [
+	accountFixture("a", [["5h", 100], ["7d", 9], ["30d", 65]]),
+	accountFixture("b", [["5h", 33], ["7d", 89]]),
+	accountFixture("off", [["5h", 1], ["7d", 1], ["30d", 1]], { disabled: true })
+];
+check("a window sums across enabled accounts", exports.sumRemaining(pooled, "5h") === 133, String(exports.sumRemaining(pooled, "5h")));
+check("a window nothing reports sums to null", exports.sumRemaining([accountFixture("b", [["5h", 33]])], "30d") === null, String(exports.sumRemaining([accountFixture("b", [["5h", 33]])], "30d")));
+check("disabled accounts add no headroom", exports.sumRemaining(pooled, "30d") === 65, String(exports.sumRemaining(pooled, "30d")));
+check(
+	"total mode reads every window as a sum",
+	exports.remainingText(exports.badgeValues({ accounts: pooled }, "total")) === "133%/98%/65%",
+	exports.remainingText(exports.badgeValues({ accounts: pooled }, "total"))
+);
+check(
+	"lowest mode reads the picked account's own windows",
+	exports.remainingText(exports.badgeValues({ accounts: pooled }, "lowest")) === "100%/9%/65%",
+	exports.remainingText(exports.badgeValues({ accounts: pooled }, "lowest"))
+);
 
 const layerEl = window.document.createElement("div");
 const panelEl = window.document.createElement("div");
@@ -388,8 +411,8 @@ check("worstOf ignores disabled accounts", exports.worstOf({ disabled: true, min
 const container = window.document.getElementById("root");
 const root = reactDomClient.createRoot(container);
 const expectedPick = exports.pickBadge(snapshot);
-const expectedBadge = exports.badgeText(expectedPick.account);
-const expectedLabels = `${expectedPick.account.short?.label ?? "5h"}/${expectedPick.account.long?.label ?? "7d"}`;
+const fixtureBadgeMode = snapshot.config?.badgeMode === "total" ? "total" : "lowest";
+const expectedBadge = exports.remainingText(exports.badgeValues(snapshot, fixtureBadgeMode));
 const busiest = [...snapshot.accounts].sort((left, right) => right.success - left.success)[0];
 
 await act(async () => {
@@ -405,10 +428,10 @@ await act(async () => {
 
 const badgeButton = container.querySelector(".cps_badge");
 check("badge renders", badgeButton !== null);
-check("badge shows the 5h/long pair the rule picks", container.textContent.includes(expectedBadge), container.textContent.slice(0, 200));
+check("badge shows the window figures the mode picks", container.textContent.includes(expectedBadge), container.textContent.slice(0, 200));
 check(
-	"badge tooltip spells out the windows behind the pair",
-	(container.querySelector(".cps_badge")?.getAttribute("title") ?? "").includes(expectedLabels),
+	"badge tooltip names the account behind the figures",
+	(container.querySelector(".cps_badge")?.getAttribute("title") ?? "").includes(expectedPick.account.email),
 	container.querySelector(".cps_badge")?.getAttribute("title")
 );
 check(
@@ -450,8 +473,8 @@ check("panel renders one card per account", window.document.body.querySelectorAl
 check("panel renders progress bars", window.document.body.querySelectorAll(".cps_fill").length >= snapshot.accounts.reduce((total, account) => total + account.windows.length, 0));
 check("panel renders request sparklines", window.document.body.querySelectorAll(".cps_spark").length >= 1);
 check("panel shows upstream health counters", panelText.includes(String(busiest.success)), String(busiest.success));
-check("panel headline repeats the pair", panelText.includes(expectedBadge), expectedBadge);
-check("panel headline names the windows", panelText.includes(expectedLabels), expectedLabels);
+check("panel headline repeats the figures", panelText.includes(expectedBadge), expectedBadge);
+check("panel headline names the mode", panelText.includes("用量最低"), panelText.slice(0, 160));
 check(
 	"panel headline tooltip names the account",
 	(window.document.body.querySelector(".cps_summaryValue")?.getAttribute("title") ?? "").includes(expectedPick.account.email),
@@ -493,6 +516,124 @@ check(
 	panelText.includes(snapshot.cpa.latestVersion) && (window.document.body.querySelector(".cps_warn")?.textContent ?? "").includes(snapshot.cpa.latestVersion),
 	snapshot.cpa.latestVersion
 );
+//#endregion
+
+//#region total mode
+const lowestText = exports.remainingText(exports.badgeValues(snapshot, "lowest"));
+const totalText = exports.remainingText(exports.badgeValues(snapshot, "total"));
+check("the fixture distinguishes the two modes", lowestText !== totalText, `${lowestText} vs ${totalText}`);
+
+const totalFetch = window.fetch;
+window.fetch = (url, init) => {
+	const target = String(url);
+	if (target.startsWith("/api/cpa-monitor/account")) return totalFetch(url, init);
+	return Promise.resolve({
+		status: 200,
+		json: () =>
+			Promise.resolve({
+				ok: true,
+				snapshot,
+				error: null,
+				ageMs: 1000,
+				intervalMs: 300000,
+				capabilities: ["account", "diagnostics", "cpa"],
+				config: { badgeMode: "total" }
+			})
+	});
+};
+const totalContainer = window.document.createElement("div");
+window.document.body.appendChild(totalContainer);
+const totalRoot = reactDomClient.createRoot(totalContainer);
+await act(async () => {
+	totalRoot.render(react.createElement(exports.CpaStatusPanel, { wide: true }));
+	await Promise.resolve();
+});
+await act(async () => {
+	await new Promise((resolve) => setTimeout(resolve, 0));
+});
+const totalBadge = totalContainer.querySelector(".cps_badge");
+check("total mode renders the summed figures", totalBadge?.textContent.includes(totalText), `expected ${totalText} in ${totalBadge?.textContent ?? ""}`);
+check("total mode does not fall back to the single account", !totalBadge?.textContent.includes(lowestText), totalBadge?.textContent ?? "");
+check(
+	"total mode tooltip says it is a sum",
+	(totalBadge?.getAttribute("title") ?? "").includes("累加"),
+	totalBadge?.getAttribute("title") ?? ""
+);
+await act(async () => {
+	totalRoot.unmount();
+});
+window.fetch = totalFetch;
+//#endregion
+
+//#region tone follows the displayed figure, not the worst account
+/** Render the panel over one crafted payload and report the badge's tone class. */
+const toneFor = async (mode, accounts) => {
+	const previous = window.fetch;
+	window.fetch = () =>
+		Promise.resolve({
+			status: 200,
+			json: () =>
+				Promise.resolve({
+					ok: true,
+					snapshot: {
+						ok: true,
+						source: "cpa",
+						baseURL: "https://cpa.example.com:8317",
+						proxy: "direct",
+						transport: [],
+						fetchedAt: Date.now(),
+						durationMs: 1,
+						accounts,
+						counts: {
+							total: accounts.length,
+							active: accounts.filter((account) => account.disabled !== true).length,
+							error: 0,
+							disabled: 0
+						},
+						minRemaining: 0,
+						attention: 0,
+						errors: [],
+						providerFilter: "codex",
+						cpa: { version: "9.9.9", commit: null, buildDate: null, latestVersion: null, updateAvailable: false }
+					},
+					error: null,
+					ageMs: 1,
+					intervalMs: 300000,
+					capabilities: ["account", "diagnostics", "cpa"],
+					config: { badgeMode: mode }
+				})
+		});
+	const holder = window.document.createElement("div");
+	window.document.body.appendChild(holder);
+	const root = reactDomClient.createRoot(holder);
+	await act(async () => {
+		root.render(react.createElement(exports.CpaStatusPanel, { wide: true }));
+		await Promise.resolve();
+	});
+	await act(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+	const classes = holder.querySelector(".cps_badgeAmount")?.className ?? "";
+	await act(async () => {
+		root.unmount();
+	});
+	window.fetch = previous;
+	return classes;
+};
+
+// A pool where one account is spent and the other is full: the aggregate is fine,
+// and because a pool load-balances, that must not read as an alert.
+const mixedPool = [
+	accountFixture("spent@example.com", [["5h", 100], ["7d", 0]]),
+	accountFixture("fresh@example.com", [["5h", 100], ["7d", 100]])
+];
+const totalTone = await toneFor("total", mixedPool);
+check("a healthy pool stays green even with one exhausted account", totalTone.includes("cps_ok"), totalTone);
+const lowestTone = await toneFor("lowest", mixedPool);
+check("lowest mode still warns, because it shows that account", lowestTone.includes("cps_bad"), lowestTone);
+// And an actually empty pool still alerts in total mode.
+const drainedTone = await toneFor("total", [accountFixture("a", [["5h", 4], ["7d", 2]]), accountFixture("b", [["5h", 3], ["7d", 1]])]);
+check("a drained pool does alert in total mode", drainedTone.includes("cps_bad"), drainedTone);
 //#endregion
 
 //#region credential writes
@@ -766,6 +907,33 @@ check(
 );
 check("an overridden field is marked", textNow().includes("已覆盖"), textNow().slice(0, 160));
 check("save starts disabled with no edits", buttonFor("保存")?.disabled === true);
+
+const modeSelect = inputFor("badgeMode");
+check("the badge mode renders as a select", modeSelect?.tagName === "SELECT", modeSelect?.tagName);
+check(
+	"the select offers both modes and shows the stored one",
+	modeSelect?.value === "lowest" && [...(modeSelect?.options ?? [])].map((option) => option.value).join(",") === "lowest,total",
+	`${modeSelect?.value} / ${[...(modeSelect?.options ?? [])].map((option) => option.value).join(",")}`
+);
+// The hint must speak the same words as the control: an earlier version explained
+// the raw `lowest` / `total` values while the select showed localised labels, so a
+// reader had to guess they meant the same choice.
+for (const [locale, dict] of [["zh", exports.zh], ["en", exports.en]]) {
+	check(
+		`the badge-mode hint names both option labels (${locale})`,
+		dict["settings.badgeMode.hint"].includes(dict["settings.badgeMode.lowest"]) &&
+			dict["settings.badgeMode.hint"].includes(dict["settings.badgeMode.total"]),
+		dict["settings.badgeMode.hint"]
+	);
+}
+const beforeModeWrite = scopeStub.writes.length;
+await setInput("badgeMode", "total");
+await clickButton("保存");
+check(
+	"saving the badge mode writes it",
+	scopeStub.writes.slice(beforeModeWrite).some((write) => write.op === "set" && write.field === "badgeMode" && write.value === "total"),
+	JSON.stringify(scopeStub.writes.slice(beforeModeWrite))
+);
 
 // Editing the address and saving must write exactly that field.
 await setInput("baseURL", "https://cpa.internal:8317");

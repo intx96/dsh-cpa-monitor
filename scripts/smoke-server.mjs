@@ -327,6 +327,11 @@ check(
 // The contract is that the key state is reported and the key itself never is —
 // whether this deployment HAS one is not something a package test can assert.
 check(
+	"payload exposes a defined badge mode",
+	["lowest", "total"].includes(before.json?.config?.badgeMode),
+	String(before.json?.config?.badgeMode)
+);
+check(
 	"payload reports the key state without ever revealing the key",
 	typeof before.json?.config?.managementKeyConfigured === "boolean" && before.json?.config?.managementKey === undefined,
 	JSON.stringify(before.json?.config)
@@ -335,6 +340,11 @@ if (before.json?.config?.managementKeyConfigured !== true) {
 	process.stdout.write("  note   no management key configured here; live checks will report themselves skipped\n");
 }
 check("payload reports the poll interval", before.json?.intervalMs === compositionConfig.refreshIntervalMs, String(before.json?.intervalMs));
+
+await app.settings.update(SETTINGS_NAMESPACE, { badgeMode: "total" });
+await settle();
+const afterMode = await call(snapshotHandler, { path: SNAPSHOT_PATH });
+check("a saved badge mode reaches the payload live", afterMode.json?.config?.badgeMode === "total", String(afterMode.json?.config?.badgeMode));
 
 await app.settings.update(SETTINGS_NAMESPACE, { refreshIntervalMs: 45000 });
 await settle();
@@ -380,6 +390,14 @@ try {
 	inverted = error instanceof Error ? error.message : String(error);
 }
 check("connectTimeoutMs > timeoutMs is refused", typeof inverted === "string" && inverted.includes("不能大于"), String(inverted));
+
+let badMode;
+try {
+	await app.settings.update(SETTINGS_NAMESPACE, { badgeMode: "bogus" });
+} catch (error) {
+	badMode = error instanceof Error ? error.message : String(error);
+}
+check("an undefined badge mode is refused", typeof badMode === "string" && badMode.includes("badgeMode"), String(badMode));
 
 let badZone;
 try {
@@ -534,8 +552,23 @@ if (liveDiagnostics.status === 200 && liveDiagnostics.json?.ok === true) {
 	process.stdout.write(`  info   live diagnostics: ${String(files.length)} error log(s), request-log=${String(liveDiagnostics.json.requestLogEnabled)}\n`);
 	if (files.length > 0) {
 		const one = await call(app.get("webServer").routes.get(DIAGNOSTICS_PATH).handler, { path: `${DIAGNOSTICS_PATH}?file=${encodeURIComponent(files[0].name)}` });
-		check("a live log parses into a summary", one.status === 200 && typeof one.json?.log?.name === "string", JSON.stringify(one.json)?.slice(0, 160));
-		check("a live log is attributed to accounts", Array.isArray(one.json?.log?.accounts) && one.json.log.accounts.length > 0, JSON.stringify(one.json?.log?.accounts));
+		const liveLog = one.json?.log;
+		check(
+			"a live log parses into a summary",
+			one.status === 200 && typeof liveLog?.name === "string" && Array.isArray(liveLog?.attempts),
+			JSON.stringify(one.json)?.slice(0, 160)
+		);
+		if ((liveLog?.attempts?.length ?? 0) > 0) {
+			check(
+				"a live log with upstream attempts is attributed to accounts",
+				liveLog.accounts.length > 0 && liveLog.attempts.every((attempt) => typeof attempt.authId === "string" && attempt.authId !== ""),
+				JSON.stringify({ attempts: liveLog.attempts.length, accounts: liveLog.accounts.length })
+			);
+		} else {
+			// A request CPA rejects before choosing a credential has nothing to attribute;
+			// asserting attribution here would fail on a healthy deployment.
+			process.stdout.write("  note   the sampled log failed before reaching a credential (no upstream attempt)\n");
+		}
 	}
 } else {
 	process.stdout.write(`  skip   live diagnostics unavailable (${String(liveDiagnostics.json?.error)?.slice(0, 90)})\n`);
