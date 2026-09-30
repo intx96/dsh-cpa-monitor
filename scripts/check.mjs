@@ -18,6 +18,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { readEffectiveConfig } from "./patch-config.mjs";
 import { Config, plainEntryConfig } from "../lib/index.js";
+import { listErrorLogs, parseErrorLog } from "../lib/cpa.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageDir = join(here, "..");
@@ -294,6 +295,49 @@ if ("toJSON" in Config) {
 } else {
 	notes.push("  note  schemastery absent — Config fell back to Standard Schema, so the 0.2 configuration form is unavailable (run npm install)");
 }
+//#endregion
+
+//#region log timestamps
+// Both clocks the failures list shows used to read a wall clock as UTC, which put
+// every entry eight hours late on a +08:00 deployment: the file name was parsed
+// with a forced `Z`, and CPA's absolute `modified` was treated as a fallback
+// instead of the authority. These are pure functions with a fake transport, so
+// the regression lives here — the integration suite needs a harness install and
+// would not always run.
+const zonedLog = parseErrorLog(
+	"error-v1-responses-2026-09-30T122726-deadbeef.log",
+	"=== API REQUEST 1 ===\nTimestamp: 2026-09-30T12:27:26.964971546+08:00\nAuth: provider=codex, auth_id=alpha.json, label=alpha@example.com\n"
+);
+// The same instant spelled with its offset, so the assertion states the rule
+// rather than a number: `12:27:26.964+08:00` IS `04:27:26.964Z`.
+check(
+	"a body stamp's own offset decides the instant",
+	zonedLog.at === Date.parse("2026-09-30T12:27:26.964+08:00"),
+	`${String(zonedLog.at)} vs ${String(Date.parse("2026-09-30T12:27:26.964+08:00"))}`
+);
+const nameOnlyLog = parseErrorLog("error-v1-responses-2026-09-30T122726-deadbeef.log", "=== API REQUEST 1 ===\n");
+check(
+	"a file-name fallback is read in the host's zone, not as UTC",
+	nameOnlyLog.at === new Date(2026, 8, 30, 12, 27, 26).getTime(),
+	`${String(nameOnlyLog.at)} vs ${String(new Date(2026, 8, 30, 12, 27, 26).getTime())}`
+);
+const fakeListingClient = {
+	request: async (url) =>
+		url.includes("request-log")
+			? { status: 404, body: "" }
+			: {
+					status: 200,
+					body: JSON.stringify({
+						files: [
+							{ name: "error-v1-responses-2026-09-30T122726-deadbeef.log", size: 12, modified: 1789448655 },
+							{ name: "not-a-log.txt", size: 1, modified: 1789448600 }
+						]
+					})
+				}
+};
+const listing = await listErrorLogs(fakeListingClient, { baseURL: "https://cpa.example.com:8317", managementKey: "k" }, 5);
+check("a listing entry prefers CPA's absolute modified time", listing.files[0]?.at === 1789448655000, String(listing.files[0]?.at));
+check("the listing keeps every file CPA reports", listing.files.length === 2, String(listing.files.length));
 //#endregion
 
 process.stdout.write(`${notes.join("\n")}\n`);

@@ -164,6 +164,8 @@ const snapshot = JSON.parse(readFileSync(join(packageDir, "test", "fixtures", "s
 const errorLogList = JSON.parse(readFileSync(join(packageDir, "test", "fixtures", "error-logs.json"), "utf8"));
 const errorLogParsed = JSON.parse(readFileSync(join(packageDir, "test", "fixtures", "error-log-parsed.json"), "utf8"));
 const refreshed = { ...snapshot, fetchedAt: Date.now(), durationMs: 4321, proxy: "http://127.0.0.1:1080" };
+// Swappable so one case can serve a log this parser cannot read.
+let diagnosticsLog = errorLogParsed;
 const requests = [];
 
 /**
@@ -192,7 +194,7 @@ window.fetch = (url, init) => {
 		return reply(envelope(next));
 	}
 	if (target.startsWith("/api/cpa-monitor/diagnostics")) {
-		if (target.includes("?file=")) return reply({ ok: true, log: errorLogParsed });
+		if (target.includes("?file=")) return reply({ ok: true, log: diagnosticsLog });
 		return reply({ ok: true, ...errorLogList });
 	}
 	return reply(envelope(target.includes("refresh") ? refreshed : snapshot));
@@ -762,7 +764,7 @@ check("a row names the endpoint and the size", rows[0].textContent.includes(erro
 
 const beforeDetail = requests.length;
 await act(async () => {
-	[...rows[0].querySelectorAll("button")].find((node) => node.textContent === "查看原文").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	[...rows[0].querySelectorAll("button")].find((node) => node.textContent === "详情").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 	await Promise.resolve();
 });
 await act(async () => {
@@ -779,7 +781,11 @@ check(
 	errorLogParsed.accounts.every((account) => sectionText.includes(account.label)),
 	sectionText.slice(0, 200)
 );
-check("the raw log is available", diagnosticsSection.querySelector(".cps_diagText")?.textContent.includes("=== REQUEST INFO ==="));
+check(
+	"the expansion leaves the raw request body out",
+	diagnosticsSection.querySelector(".cps_diagText") === null,
+	diagnosticsSection.querySelector(".cps_diagText")?.textContent?.slice(0, 80)
+);
 
 // The expansion belongs to the row that asked for it: parked at the end of the
 // list it looked like the button had done nothing.
@@ -803,8 +809,35 @@ await act(async () => {
 check("clicking again collapses the row in place", diagnosticsSection.querySelector(".cps_diagDetail") === null);
 check(
 	"the collapsed row offers to open again",
-	[...diagnosticsSection.querySelectorAll(".cps_diagRow")[0].querySelectorAll("button")].some((node) => node.textContent === "查看原文")
+	[...diagnosticsSection.querySelectorAll(".cps_diagRow")[0].querySelectorAll("button")].some((node) => node.textContent === "详情")
 );
+
+// The summary is the point of expanding; the raw body is the safety net for a log
+// this parser cannot read at all, where an empty box would be worse.
+diagnosticsLog = {
+	...errorLogParsed,
+	status: null,
+	errorMessage: null,
+	errorCode: null,
+	model: null,
+	endpoint: null,
+	attempts: [],
+	accounts: [],
+	text: "=== REQUEST INFO ===\nunrecognised",
+	truncated: false
+};
+const secondRow = [...diagnosticsSection.querySelectorAll(".cps_diagRow")][1];
+await act(async () => {
+	[...secondRow.querySelectorAll("button")].find((node) => node.textContent === "详情").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	await Promise.resolve();
+});
+await act(async () => {
+	await new Promise((resolve) => setTimeout(resolve, 0));
+});
+const fallbackText = diagnosticsSection.querySelector(".cps_diagText");
+check("an unreadable log falls back to its raw text", fallbackText?.textContent.includes("=== REQUEST INFO ==="), fallbackText?.textContent?.slice(0, 60));
+check("an unreadable log says so instead of naming a status", diagnosticsSection.textContent.includes(exports.zh["diag.noMessage"]));
+diagnosticsLog = errorLogParsed;
 //#endregion
 
 //#region a server half older than the capability contract
