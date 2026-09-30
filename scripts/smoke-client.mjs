@@ -780,6 +780,31 @@ check(
 	sectionText.slice(0, 200)
 );
 check("the raw log is available", diagnosticsSection.querySelector(".cps_diagText")?.textContent.includes("=== REQUEST INFO ==="));
+
+// The expansion belongs to the row that asked for it: parked at the end of the
+// list it looked like the button had done nothing.
+const openItem = rows[0].closest(".cps_diagItem");
+check(
+	"the detail expands inside the row that asked for it",
+	openItem?.querySelector(".cps_diagDetail") !== null && openItem?.querySelector(".cps_diagRow") === rows[0],
+	openItem?.innerHTML?.slice(0, 120)
+);
+check(
+	"no other row grows a detail",
+	[...diagnosticsSection.querySelectorAll(".cps_diagItem")].slice(1).every((item) => item.querySelector(".cps_diagDetail") === null)
+);
+const openToggle = [...rows[0].querySelectorAll("button")].find((node) => node.textContent === "收起");
+check("an open row offers to collapse itself", openToggle !== undefined, rows[0].textContent);
+check("an open row reports its expanded state", openToggle?.getAttribute("aria-expanded") === "true", openToggle?.getAttribute("aria-expanded"));
+await act(async () => {
+	openToggle.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	await Promise.resolve();
+});
+check("clicking again collapses the row in place", diagnosticsSection.querySelector(".cps_diagDetail") === null);
+check(
+	"the collapsed row offers to open again",
+	[...diagnosticsSection.querySelectorAll(".cps_diagRow")[0].querySelectorAll("button")].some((node) => node.textContent === "查看原文")
+);
 //#endregion
 
 //#region a server half older than the capability contract
