@@ -93,6 +93,38 @@ function createScopeStub(options = {}) {
 	};
 }
 
+/**
+ * A stand-in for the host-owned form the Plugins page passes a row configuration.
+ *
+ * Mirrors the page's `formFor()` projection: a plain `state` value (the page
+ * re-renders on change, so there is nothing to subscribe to) plus the
+ * `mutate(ops, revision)` write, which answers with the host's boolean verdict.
+ *
+ * @param options - the initial namespace view, and whether writes are accepted.
+ * @returns the form plus the ordered call log.
+ */
+function createFormStub(options = {}) {
+	const calls = [];
+	return {
+		calls,
+		form: {
+			state: {
+				status: options.status ?? "ready",
+				value: options.value,
+				base: options.base ?? options.value,
+				user: options.user,
+				revision: options.revision ?? 7,
+				writable: options.writable ?? true,
+				mode: "host"
+			},
+			async mutate(ops, revision) {
+				calls.push({ ops, revision });
+				return options.accept ?? true;
+			}
+		}
+	};
+}
+
 //#region environment
 if (!existsSync(join(testEnv, "node_modules", "react"))) {
 	process.stderr.write(`smoke-client: missing render harness at ${testEnv}\nrun: (cd .test-env && npm --cache ../.npm-cache install react@18 react-dom@18 jsdom)\n`);
@@ -265,11 +297,11 @@ const fakeCtx = {
 };
 exports.apply(fakeCtx);
 check(
-	"apply injects into the sidebar footer slot and the settings service",
-	["sidebar.footer.action", "settingsScope", "settings.plugin.item"].every((name) => injected.includes(name)),
+	"apply injects both configuration hosts plus the sidebar footer slot",
+	["sidebar.footer.action", "plugins.row.config", "settingsScope", "settings.plugin.item"].every((name) => injected.includes(name)),
 	JSON.stringify(injected)
 );
-check("apply registers exactly two occupants", registrations.length === 2, String(registrations.length));
+check("apply registers exactly three occupants", registrations.length === 3, String(registrations.length));
 check(
 	"occupant registration shape",
 	registrations[0]?.options?.name === "sidebar.footer.action" &&
@@ -279,6 +311,15 @@ check(
 	JSON.stringify(registrations[0]?.options)
 );
 check("registered component is the panel", registrations[0]?.component === exports.CpaStatusPanel);
+const rowRegistration = registrations.find((entry) => entry.options.name === "plugins.row.config");
+check(
+	"registers the Plugins-page row configuration as <package>#<row id>",
+	rowRegistration?.options.key === "dsh-cpa-monitor#cpa-monitor" &&
+		rowRegistration?.options.key === exports.ROW_CONFIG_KEY &&
+		rowRegistration?.options.locale === "cpa-monitor",
+	JSON.stringify(rowRegistration?.options)
+);
+check("the row configuration is the row component", rowRegistration?.component === exports.CpaRowConfig);
 const settingsRegistration = registrations.find((entry) => entry.options.name === "settings.plugin.item");
 check("registers a settings card keyed by the namespace", settingsRegistration?.options.key === "cpa-monitor", JSON.stringify(settingsRegistration?.options));
 check("settings card is the settings component", settingsRegistration?.component === exports.CpaSettingsCard);
@@ -1032,6 +1073,173 @@ check("a read-only namespace cannot save", [...readOnlyContainer.querySelectorAl
 await act(async () => {
 	readOnlyRoot.unmount();
 	cardRoot.unmount();
+});
+//#endregion
+
+//#region plugins-page row configuration (DSH >= 0.2)
+// DSH 0.2 removed the Settings page that hosted this card and moved plugin
+// configuration onto the sidebar Plugins page, which dispatches the row page of
+// `dsh-cpa-monitor#cpa-monitor` with the host-owned form as a VALUE rather than
+// a subscribable scope. These checks pin that surface.
+check("the row summary view is a one-liner without controls", (() => {
+	const holder = window.document.createElement("div");
+	window.document.body.appendChild(holder);
+	const root = reactDomClient.createRoot(holder);
+	act(() => {
+		root.render(react.createElement(exports.CpaRowConfig, { view: "summary", t: undefined }));
+	});
+	const text = holder.textContent ?? "";
+	const clean = holder.querySelector("input") === null && holder.querySelector("button") === null;
+	act(() => {
+		root.unmount();
+	});
+	return text.includes(exports.zh["settings.description"]) && clean;
+})());
+
+check("an unavailable row namespace renders nothing at all", (() => {
+	const holder = window.document.createElement("div");
+	window.document.body.appendChild(holder);
+	const root = reactDomClient.createRoot(holder);
+	const stub = createFormStub({ status: "unavailable", value: {} });
+	act(() => {
+		root.render(react.createElement(exports.CpaRowConfig, { view: "page", form: stub.form, t: undefined }));
+	});
+	const html = holder.innerHTML;
+	act(() => {
+		root.unmount();
+	});
+	return html === "";
+})());
+
+const rowStub = createFormStub({
+	value: {
+		baseURL: "https://cpa.example.com:8317",
+		proxies: ["http://127.0.0.1:1080"],
+		allowDirect: false,
+		providerFilter: "codex",
+		includeDisabled: true,
+		badgeMode: "total",
+		refreshIntervalMs: 300000,
+		timeoutMs: 20000,
+		connectTimeoutMs: 10000,
+		timeZone: "Asia/Shanghai",
+		insecure: false
+	},
+	user: { badgeMode: "total" }
+});
+const rowContainer = window.document.createElement("div");
+window.document.body.appendChild(rowContainer);
+const rowRoot = reactDomClient.createRoot(rowContainer);
+const renderRow = async (form) => {
+	await act(async () => {
+		rowRoot.render(react.createElement(exports.CpaRowConfig, { view: "page", form, t: undefined }));
+		await Promise.resolve();
+	});
+};
+await renderRow(rowStub.form);
+
+const rowInput = (field) => rowContainer.querySelector(`#cps-set-${field}`);
+const rowButton = (label) => [...rowContainer.querySelectorAll("button")].find((node) => node.textContent === label);
+const setRowInput = async (field, value) => {
+	await act(async () => {
+		const node = rowInput(field);
+		if (node.type === "checkbox") Simulate.change(node, { target: { checked: value === true } });
+		else Simulate.change(node, { target: { value } });
+		await Promise.resolve();
+	});
+};
+const clickRowButton = async (label) => {
+	await act(async () => {
+		rowButton(label).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+		await Promise.resolve();
+	});
+};
+
+check("the row page renders the form without a second card", rowContainer.querySelector("li") === null, rowContainer.innerHTML.slice(0, 120));
+check("the row page is always expanded", rowContainer.querySelector(".cps_setPageBody") !== null && rowContainer.querySelector(".cps_setHeader") === null);
+check("the row page keeps the settings payload", rowContainer.querySelector("[data-cpa-status-settings]") !== null);
+check("the row page renders every declared field", exports.SETTINGS_FIELDS.every((spec) => rowInput(spec.field) !== null), String(exports.SETTINGS_FIELDS.length));
+check("the row form reads the host's state value", rowInput("baseURL")?.value === "https://cpa.example.com:8317", rowInput("baseURL")?.value);
+check("the row form starts with no pending edits", rowButton("保存")?.disabled === true);
+
+await setRowInput("baseURL", "https://cpa.internal:8317");
+check("a staged edit raises the unsaved marker on the page", (rowContainer.textContent ?? "").includes(exports.zh["settings.unsaved"]));
+await clickRowButton("保存");
+check(
+	"save sends one path-addressed set with the revision it read",
+	JSON.stringify(rowStub.calls) === JSON.stringify([{ ops: [{ op: "set", path: ["baseURL"], value: "https://cpa.internal:8317" }], revision: 7 }]),
+	JSON.stringify(rowStub.calls)
+);
+check("a landed save clears the staged draft", rowButton("保存")?.disabled === true);
+
+rowStub.calls.length = 0;
+const clearBadgeMode = rowContainer.querySelector("#cps-set-badgeMode").closest(".cps_field").querySelector(".cps_fieldClear");
+await act(async () => {
+	clearBadgeMode.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	await Promise.resolve();
+});
+await clickRowButton("保存");
+check(
+	"clearing an override sends an unset",
+	JSON.stringify(rowStub.calls) === JSON.stringify([{ ops: [{ op: "unset", path: ["badgeMode"] }], revision: 7 }]),
+	JSON.stringify(rowStub.calls)
+);
+
+// A refusal is the host's answer, not an exception: the page must say so.
+const refusing = createFormStub({ value: { baseURL: "https://cpa.example.com:8317" }, accept: false });
+await renderRow(refusing.form);
+await setRowInput("baseURL", "https://nope:1");
+await clickRowButton("保存");
+check("a refused write is reported to the reader", (rowContainer.textContent ?? "").includes(exports.zh["settings.writeFailed"]), (rowContainer.textContent ?? "").slice(0, 200));
+check("a refused write keeps the draft staged", rowButton("保存")?.disabled === false);
+
+// The namespace can appear after the first render. The unavailable check must
+// therefore sit after the hooks: an early return before them would change the
+// hook count between renders and make React throw. A dedicated root keeps the
+// previous case's staged draft out of this one, and it is the only form mounted
+// while it renders: jsdom resolves a `#id` selector through the document, so two
+// live forms sharing field ids would make that lookup miss.
+await act(async () => {
+	rowRoot.unmount();
+});
+const lateContainer = window.document.createElement("div");
+window.document.body.appendChild(lateContainer);
+const lateRoot = reactDomClient.createRoot(lateContainer);
+const renderLate = async (form) => {
+	await act(async () => {
+		lateRoot.render(react.createElement(exports.CpaRowConfig, { view: "page", form, t: undefined }));
+		await Promise.resolve();
+	});
+};
+await renderLate(createFormStub({ status: "unavailable", value: {} }).form);
+await renderLate(createFormStub({ value: { baseURL: "https://late.example:8317" } }).form);
+check(
+	"a namespace that arrives after the first render mounts its form",
+	lateContainer.querySelector('[id="cps-set-baseURL"]')?.value === "https://late.example:8317",
+	lateContainer.querySelector('[id="cps-set-baseURL"]')?.value
+);
+await act(async () => {
+	lateRoot.unmount();
+});
+
+const rowReadOnlyContainer = window.document.createElement("div");
+window.document.body.appendChild(rowReadOnlyContainer);
+const rowReadOnlyRoot = reactDomClient.createRoot(rowReadOnlyContainer);
+await act(async () => {
+	rowReadOnlyRoot.render(
+		react.createElement(exports.CpaRowConfig, { view: "page", form: createFormStub({ value: { baseURL: "https://x:1" }, writable: false }).form, t: undefined })
+	);
+	await Promise.resolve();
+});
+const readOnlyText = rowReadOnlyContainer.textContent ?? "";
+check("a read-only row namespace explains itself", readOnlyText.includes(exports.zh["settings.readOnly"]), readOnlyText.slice(0, 140));
+check(
+	"a read-only row namespace disables its controls",
+	rowReadOnlyContainer.querySelector('[id="cps-set-baseURL"]')?.disabled === true &&
+		[...rowReadOnlyContainer.querySelectorAll("button")].find((node) => node.textContent === "保存")?.disabled === true
+);
+await act(async () => {
+	rowReadOnlyRoot.unmount();
 });
 //#endregion
 

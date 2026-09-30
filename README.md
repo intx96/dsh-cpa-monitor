@@ -1,6 +1,6 @@
 # dsh-cpa-monitor
 
-一个 DSH Web profile 插件：在**左侧栏底部**显示 CLIProxyAPI（CPA）里每个 Codex 账号的订阅额度状态，在**设置 → 插件**里提供地址与代理的可视化配置，并支持**在面板里直接开关账号、编辑备注/优先级、查看失败原因**。
+一个 DSH Web profile 插件：在**左侧栏底部**显示 CLIProxyAPI（CPA）里每个 Codex 账号的订阅额度状态，提供**地址与代理的可视化配置页**（DSH ≥ 0.2 在侧栏「插件」页，≤ 0.1 在「设置 → 插件」），并支持**在面板里直接开关账号、编辑备注/优先级、查看失败原因**。
 
 - **服务端 half**（`lib/index.js`）：按周期直连 CPA 管理口，聚合账号状态，暴露两个 loopback-only 精确路由，并注册 `cpa-monitor` 设置命名空间。
 - **客户端 half**（`lib/client.js`）：注册到 `sidebar.footer.action`（状态徽标 + 详情面板）和 `settings.plugin.item`（配置卡片）。
@@ -50,7 +50,7 @@ dsh plugin --profile web add /path/to/dsh-cpa-monitor
 # 然后重启 dsh web
 ```
 
-装完把 CPA 地址填进 **设置 → 插件 → 「CPA 账号状态」**（或在启动环境里设 `DSH_CPA_MANAGEMENT_KEY`）——仓库里**不含**任何真实地址与密钥，见下面的分层说明。
+装完把 CPA 地址填进**配置页**（见下面「配置」一节的入口对照表），或在启动环境里设 `DSH_CPA_MANAGEMENT_KEY`——仓库里**不含**任何真实地址与密钥，见下面的分层说明。
 
 `dsh plugin add` 用 pnpm 建 **软链**（`link:`，不复制代码），并把 `dsh-cpa-monitor` 追加进 profile 的 `dsh.profile.bundles`。重启后刷新浏览器即可。
 
@@ -72,11 +72,20 @@ dsh plugin --profile web remove dsh-cpa-monitor
 
 ## 配置
 
-### 首选：设置页
+### 首选：配置页
 
-**设置 → 插件 → 「CPA 账号状态」**
+配置页的入口**跟着 DSH 版本走**，插件对两代都做了注册，只会命中其中一个：
 
-卡片和其它插件设置项**逐项对齐**（我按官方 `PluginCard` 的实现照做的）：默认折叠、`li` 卡片壳、15px/600 标题 + 13px 描述、`.5px` `border-l4` 描边、展开后换 `bg-layer-2`、`IconChevronDownOutline14` 旋转 180°、未保存时在标题栏挂官方的 `Tag`（`tone: "neutral"`）、**保存成功后自动折叠**、`aria-label` 也是官方的「展开/收起: <标题>」形式。折叠不会丢暂存。展开后是 12 个字段，每个都显示当前生效值、是否被覆盖（`已覆盖` 徽标）以及一个 `清除` 回到默认层：
+| DSH | 入口 |
+|---|---|
+| **≥ 0.2**（含桌面 App） | 左侧栏 **插件** → **已安装** → `dsh-cpa-monitor` → 行 `cpa-monitor` 的 **配置** |
+| ≤ 0.1 | **设置 → 插件 → 「CPA 账号状态」** |
+
+0.2 把「插件自己的配置」从设置里搬走了：设置里只剩一个**只读**的插件清单（设置 → 插件 → 插件列表），配置改由侧栏插件页承载。插件页声明三个 slot 供插件注册配置面，本插件用的是 `plugins.row.config`，键为 `dsh-cpa-monitor#cpa-monitor`（`<包名>#<patch 里的行 id>`）。页面会自己画标题、图标和面包屑，表单状态由页面的 `form` 持有——**点保存才写**，离开页面丢弃未保存的修改。
+
+0.1 的老卡片走的是 `settings.plugin.item` + `settingsScope`，这两样在 0.2 里已经被删掉（`settings.plugin.item` 在 0.2.0-rc.2 的 98 个根 slot 里已不存在，`settingsScope` 服务也一并没了），所以那一分支在 0.2 上只是静静地不注册，不会报错。
+
+卡片与官方各设置页**逐项对齐**（按官方 `PluginCard` 的实现照做）：默认折叠、`li` 卡片壳、15px/600 标题 + 13px 描述、`.5px` `border-l4` 描边、展开后换 `bg-layer-2`、`IconChevronDownOutline14` 旋转 180°、未保存时在标题栏挂官方的 `Tag`（`tone: "neutral"`）、**保存成功后自动折叠**、`aria-label` 也是官方的「展开/收起: <标题>」形式。折叠不会丢暂存。0.2 的插件页版本不套卡片壳（页面已经画了标题和面包屑），表单直接铺开、常驻显示。展开后是 12 个字段，每个都显示当前生效值、是否被覆盖（`已覆盖` 徽标）以及一个 `清除` 回到默认层：
 
 | 字段 | 说明 |
 |---|---|
@@ -100,10 +109,10 @@ dsh plugin --profile web remove dsh-cpa-monitor
 配置分三层，逐层覆盖：
 
 ```
-schema 默认值  →  组合层（本包 cordis.patch.yml）  →  用户层（settings.yaml，即设置页写入）
+schema 默认值  →  组合层（本包 cordis.patch.yml）  →  用户层（settings.yaml，即配置页写入）
 ```
 
-**本仓库刻意不含密钥。** `cordis.patch.yml`（会被提交）只有占位地址且没有 `managementKey`；某个部署的真实地址与密钥属于**用户层**，也就是 `~/.dsh/settings.yaml` 的 `cpa-monitor:` 段（设置页写的就是它），或环境变量 `DSH_CPA_MANAGEMENT_KEY`。`npm run check` 里有一条扫描会挡住「密钥形状的字面量」重新混进被提交的文件。
+**本仓库刻意不含密钥。** `cordis.patch.yml`（会被提交）只有占位地址且没有 `managementKey`；某个部署的真实地址与密钥属于**用户层**，也就是 `~/.dsh/settings.yaml` 的 `cpa-monitor:` 段（配置页写的就是它），或环境变量 `DSH_CPA_MANAGEMENT_KEY`。`npm run check` 里有一条扫描会挡住「密钥形状的字面量」重新混进被提交的文件。
 
 要在整个部署里改默认值（例如给新 profile 准备一套），用 id 定位补丁写进 `~/.dsh/profiles/web/cordis.patch.yml`：
 
@@ -114,7 +123,7 @@ schema 默认值  →  组合层（本包 cordis.patch.yml）  →  用户层（
     proxies: ["http://127.0.0.1:1080"]
 ```
 
-⚠️ 按 id 定位的补丁会**整体替换** `config` 对象（不是深合并），要改一个字段就把其它字段一起写上。`dsh web --dump-config` 可打印组合结果。在设置页里清除过的字段会回到这里。
+⚠️ 按 id 定位的补丁会**整体替换** `config` 对象（不是深合并），要改一个字段就把其它字段一起写上。`dsh web --dump-config` 可打印组合结果。在配置页里清除过的字段会回到这里。
 
 ### 本机实测：1081 是僵尸代理
 
@@ -125,7 +134,7 @@ schema 默认值  →  组合层（本包 cordis.patch.yml）  →  用户层（
 | `127.0.0.1:1081` | TCP 能连上，但 **CONNECT / SOCKS5 都不通，对端约 81s 后才 reset** |
 | `127.0.0.1:1080` | 可用的 HTTP CONNECT 代理，经它访问 CPA 正常（约 0.5–1.5s/请求） |
 
-默认仍把 1081 排在前面（尊重原偏好），但传输层是**并行探测**的，所以僵尸候选不拖慢任何请求；10 秒后被标记不可达并跳过，直到一次全员失败才重新探测。想彻底不试它，在设置页把代理地址只留 `http://127.0.0.1:1080`。
+默认仍把 1081 排在前面（尊重原偏好），但传输层是**并行探测**的，所以僵尸候选不拖慢任何请求；10 秒后被标记不可达并跳过，直到一次全员失败才重新探测。想彻底不试它，在配置页把代理地址只留 `http://127.0.0.1:1080`。
 
 ---
 
@@ -161,7 +170,7 @@ schema 默认值  →  组合层（本包 cordis.patch.yml）  →  用户层（
 
 - **侧栏徽标**：`[仪表图标] CPA 账号 133%/89%        2/3`。数值是 `5h余量/7d余量`，**有 30d 数据时再补一段** `5h/7d/30d`；缺 5h 或 7d 显示 `-`，而 **30d 没有就整段不显示**（所以只有 7d 的池子读作 `94%/12%`）。16px 描边图标打头，和旁边的「设置」条目同一套图标语言，且**固定使用侧栏的中性色**（不会因为额度紧张变红）；数值紧跟在标题后面、和上一行「用量/余额 ¥116.50」对齐，只有 `2/3` 这个账号计数用 `margin-left:auto` 顶到最右。侧栏折叠成 rail 时变成 36px 圆形图标。点击展开浮层面板。
 
-  数值有两种口径，由设置页的 **「侧栏徽标口径」** 决定：
+  数值有两种口径，由配置页的 **「侧栏徽标口径」** 决定：
 
   | 口径 | 显示什么 | 例子 |
   |---|---|---|
@@ -223,7 +232,7 @@ npm run fixtures                  # 从真机重抓离线 fixture（快照 + 错
 |---|---|
 | `scripts/check.mjs` | 包契约：`exports["./client"]`、`dsh.client.platform`、补丁层 insert 形状、服务端只允许 `node:` + 相对路径 + 锁死的 schemastery、客户端 `require` 全在 shell seed 表内 |
 | `scripts/smoke-server.mjs` | 在**真 cordis 上下文**里跑插件，配**真 `SettingsProvider`**（内存存储）+ 桩 `webServer`；另有一套**假 CPA 传输**（canned 响应 + 写入日志）用来验证凭据写操作与诊断，绝不碰生产代理：命名空间注册、三层优先级、`live` 生效、修订围栏写入、密钥脱敏、校验拒绝（错协议/超时倒置/坏时区）、重置回默认层、loopback 围栏、action 头守卫、缓存、无 settings 服务时的降级、真机快照、版本元信息与 `updateAvailable`、按 authIndex→文件名寻址的凭据写入及全部拒绝路径、诊断列表/单篇解析/路径穿越拒绝/未登记文件拒绝、真机只读诊断 |
-| `scripts/smoke-client.mjs` | jsdom + React 18 真渲染：插槽注册形状、`pickBadge` 选择规则与三段式格式（含 20% 边界、禁用账号、30d 回退、缺窗口 `-`、累加与口径）、版本 chip、账号开关与备注/优先级编辑的请求形状与回填、失败诊断列表/详情渲染、真机快照 fixture 渲染、面板文案位置（副标题=CPA 地址，页脚不含地址/代理）、设置卡片的折叠/展开与 `aria-expanded`、`Tag` 未保存标记、保存后自动折叠、折叠不丢暂存、每个字段的渲染/暂存/保存/清除/校验阻断、空密钥不写入、秒↔毫秒换算、代理列表↔数组、只读与不可用状态、侧栏图标中性色 |
+| `scripts/smoke-client.mjs` | jsdom + React 18 真渲染：插槽注册形状、`pickBadge` 选择规则与三段式格式（含 20% 边界、禁用账号、30d 回退、缺窗口 `-`、累加与口径）、版本 chip、账号开关与备注/优先级编辑的请求形状与回填、失败诊断列表/详情渲染、真机快照 fixture 渲染、面板文案位置（副标题=CPA 地址，页脚不含地址/代理）、设置卡片的折叠/展开与 `aria-expanded`、`Tag` 未保存标记、保存后自动折叠、折叠不丢暂存、每个字段的渲染/暂存/保存/清除/校验阻断、空密钥不写入、秒↔毫秒换算、代理列表↔数组、只读与不可用状态、侧栏图标中性色、**0.2 插件页行配置**（`dsh-cpa-monitor#cpa-monitor` 注册形状、`summary`/`page` 两种视图、`form.mutate` 的 path-op 与 revision、写入被拒绝的提示、命名空间晚于首屏出现时的 hook 顺序回归） |
 | `scripts/patch-config.mjs` | 用真 YAML 解析读本包补丁（正则会被注释里的示例值骗到） |
 | `scripts/capture-fixtures.mjs` | 从真机重抓 `test/fixtures/`（快照 / 错误日志列表 / 单篇正文与解析结果） |
 
@@ -240,7 +249,7 @@ lib/net.js                  代理感知 HTTP 客户端（HTTP CONNECT / SOCKS5�
 lib/cpa.js                  CPA 领域逻辑：账号发现、usage 拉取、窗口解析（py 逻辑移植）
 lib/schema.js               schemastery 加载器（本地依赖优先，回退到 host 的 profiles）
 lib/index.js                cordis 服务端插件：config 三层、runtime 热切换、轮询、路由
-lib/client.js               浏览器 half：手写 __ModuleLoader__ bundle，侧栏徽标 + 面板 + 设置卡片
+lib/client.js               浏览器 half：手写 __ModuleLoader__ bundle，侧栏徽标 + 面板 + 两代配置页（0.2 插件页行配置 / ≤0.1 设置卡片）
 cordis.patch.yml            组合层默认配置 + 挂载入口
 scripts/probe.mjs           服务端真机探针
 scripts/patch-config.mjs    补丁 YAML 读取器
