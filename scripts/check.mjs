@@ -18,7 +18,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { readEffectiveConfig } from "./patch-config.mjs";
 import { Config, plainEntryConfig } from "../lib/index.js";
-import { listErrorLogs, managementSurface, parseErrorLog, resetCooldown } from "../lib/cpa.js";
+import { fetchResetCredits, listErrorLogs, managementSurface, parseErrorLog, refreshCredential, resetCooldown } from "../lib/cpa.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageDir = join(here, "..");
@@ -404,6 +404,62 @@ check(
 		resetClientSource.split('action: "reset"').every((part, index) => index === 0 || part.includes("credits")),
 	String(resetClientSource.split('action: "reset"').length - 1)
 );
+// The OAuth refresh is v8-only, single-credential only, and must never ask CPA
+// for `all: true` (which re-runs every credential's refresh at once).
+const refreshCalls = [];
+const refreshTransport = {
+	request: async (url, init) => {
+		// The surface probe is a GET with no body; only writes carry one.
+		refreshCalls.push({ url, body: init.body === undefined ? undefined : JSON.parse(init.body) });
+		return url.includes("quota/providers")
+			? { status: 200, body: "{}", headers: {} }
+			: { status: 200, body: JSON.stringify({ ok: true, auth: { id: "alpha.json" } }), headers: {} };
+	}
+};
+const v8Client = { request: refreshTransport.request, managementSurface: undefined };
+await refreshCredential(v8Client, base, "alpha.json");
+check(
+	"the OAuth refresh posts the credential name to v8's refresh route",
+	refreshCalls.at(-1)?.url === "https://cpa.example.com:8317/v8/management/credentials/refresh" &&
+		refreshCalls.at(-1)?.body.name === "alpha.json",
+	JSON.stringify(refreshCalls.at(-1))
+);
+check("the refresh never asks CPA to refresh everything", refreshCalls.every((call) => (call.body ?? {}).all === undefined), JSON.stringify(refreshCalls.map((call) => call.body)));
+let v0Refresh = null;
+try {
+	await refreshCredential({ request: async () => ({ status: 200, body: "{}" }), managementSurface: { id: "v0" } }, base, "alpha.json");
+} catch (error) {
+	v0Refresh = error instanceof Error ? error.message : String(error);
+}
+check("a v0 deployment refuses the refresh instead of guessing a route", v0Refresh !== null && v0Refresh.includes("v8"), String(v0Refresh));
+
+// The credits read parses the upstream payload, which spells its keys either way.
+const creditsTransport = {
+	request: async () => ({
+		status: 200,
+		body: JSON.stringify({
+			status_code: 200,
+			body: JSON.stringify({
+				available_count: 2,
+				total_earned_count: 5,
+				credits: [
+					{ id: "c1", status: "available", reset_type: "codex_rate_limits", title: "Full reset", granted_at: "2026-09-22T19:16:48.639633Z", expires_at: "2026-10-22T19:16:48.639633Z" },
+					{ id: "c2", status: "redeemed", redeemedAt: "2026-10-01T00:00:00Z" }
+				]
+			})
+		})
+	})
+};
+const credits = await fetchResetCredits({ request: creditsTransport.request, managementSurface: undefined }, base, { authIndex: "a1", accountId: "acc" });
+check("the credits read reports the available count", credits.ok === true && credits.availableCount === 2, JSON.stringify(credits));
+check(
+	"a credit's expiry arrives as an instant",
+	credits.credits[0]?.expiresAt === Date.parse("2026-10-22T19:16:48.639Z") && credits.credits[0]?.title === "Full reset",
+	JSON.stringify(credits.credits[0])
+);
+check("a camelCase payload is read too", credits.credits[1]?.redeemedAt === Date.parse("2026-10-01T00:00:00Z"), JSON.stringify(credits.credits[1]));
+const failedCredits = await fetchResetCredits({ request: async () => ({ status: 500, body: "boom" }), managementSurface: { id: "v8" } }, base, { authIndex: "a1", accountId: "" });
+check("a failed credits read degrades to an error, not a throw", failedCredits.ok === false && typeof failedCredits.error === "string", JSON.stringify(failedCredits));
 //#endregion
 
 process.stdout.write(`${notes.join("\n")}\n`);

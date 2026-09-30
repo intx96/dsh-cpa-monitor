@@ -179,7 +179,7 @@ window.fetch = (url, init) => {
 	const headers = (init && init.headers) || {};
 	requests.push({ url: target, method, headers, body: init && init.body });
 	const reply = (payload) => Promise.resolve({ status: 200, json: () => Promise.resolve(payload) });
-	const envelope = (body) => ({ ok: true, snapshot: body, error: null, ageMs: 1000, intervalMs: 300000, capabilities: ["account", "diagnostics", "cpa", "reset"] });
+	const envelope = (body) => ({ ok: true, snapshot: body, error: null, ageMs: 1000, intervalMs: 300000, capabilities: ["account", "diagnostics", "cpa", "reset", "credits", "refresh"] });
 
 	if (target.startsWith("/api/cpa-monitor/account")) {
 		const patch = JSON.parse(init.body);
@@ -192,6 +192,34 @@ window.fetch = (url, init) => {
 			})
 		};
 		return reply(envelope(next));
+	}
+	if (target.startsWith("/api/cpa-monitor/credits")) {
+		return reply({
+			ok: true,
+			cached: false,
+			availableCount: 2,
+			totalEarnedCount: 3,
+			credits: [
+				{
+					id: "RateLimitResetCredit_1",
+					status: "available",
+					resetType: "codex_rate_limits",
+					title: "Full reset (Weekly + 5 hr)",
+					grantedAt: Date.parse("2026-09-22T19:16:48.639Z"),
+					expiresAt: Date.parse("2026-10-22T19:16:48.639Z"),
+					redeemedAt: null
+				},
+				{
+					id: "RateLimitResetCredit_2",
+					status: "redeemed",
+					resetType: "codex_rate_limits",
+					title: "Full reset (Weekly + 5 hr)",
+					grantedAt: Date.parse("2026-09-01T00:00:00Z"),
+					expiresAt: Date.parse("2026-10-01T00:00:00Z"),
+					redeemedAt: Date.parse("2026-09-30T00:00:00Z")
+				}
+			]
+		});
 	}
 	if (target.startsWith("/api/cpa-monitor/diagnostics")) {
 		if (target.includes("?file=")) return reply({ ok: true, log: diagnosticsLog });
@@ -749,15 +777,31 @@ const creditCard = cardOf(snapshot.accounts[0].email);
 const creditLink = creditCard.querySelector(".cps_creditLink");
 check("reset credits are a control, not a bare number", creditLink !== null && creditLink.getAttribute("aria-expanded") === "false", creditLink?.textContent);
 check("the control carries the count", creditLink?.textContent.includes(String(snapshot.accounts[0].resetCredits)), creditLink?.textContent);
+// The disclosure reads the credits (a harmless GET); what must never happen
+// before the second confirmation is a WRITE.
+const accountWrites = (since) => requests.slice(since).filter((entry) => entry.url.startsWith("/api/cpa-monitor/account"));
 const beforeCredits = requests.length;
 await act(async () => {
 	creditLink.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 	await Promise.resolve();
 });
 const creditPanel = creditCard.querySelector(".cps_creditPanel");
-check("opening the panel sends nothing at all", requests.length === beforeCredits, JSON.stringify(requests.slice(beforeCredits)));
+check("opening the panel writes nothing", accountWrites(beforeCredits).length === 0, JSON.stringify(requests.slice(beforeCredits)));
+check(
+	"opening the panel reads the credits exactly once",
+	requests.slice(beforeCredits).filter((entry) => entry.url.startsWith("/api/cpa-monitor/credits")).length === 1,
+	JSON.stringify(requests.slice(beforeCredits).map((entry) => entry.url))
+);
 check("the panel is expanded once opened", creditCard.querySelector(".cps_creditLink")?.getAttribute("aria-expanded") === "true");
 check("the panel states what a reset costs", creditPanel?.textContent.includes("消耗 1 张重置券"), creditPanel?.textContent?.slice(0, 160));
+check(
+	"the panel shows each credit's expiry from the credits endpoint",
+	creditPanel?.textContent.includes("Full reset (Weekly + 5 hr)") &&
+		creditPanel?.textContent.includes("到期 ") &&
+		!creditPanel?.textContent.includes(exports.zh["credits.expiryUnknown"]),
+	creditPanel?.textContent?.slice(0, 200)
+);
+check("a redeemed credit says when it was used", creditPanel?.textContent.includes("已于 "), creditPanel?.textContent?.slice(0, 200));
 check("the panel offers the reset", cardButton(creditCard, "重置") !== undefined, creditPanel?.textContent?.slice(0, 160));
 
 await act(async () => {
@@ -766,7 +810,7 @@ await act(async () => {
 });
 check(
 	"the first click only asks for confirmation",
-	requests.length === beforeCredits && cardButton(creditCard, "确认重置") !== undefined && creditCard.textContent.includes("确认重置？"),
+	accountWrites(beforeCredits).length === 0 && cardButton(creditCard, "确认重置") !== undefined && creditCard.textContent.includes("确认重置？"),
 	creditCard.textContent.slice(0, 200)
 );
 await act(async () => {
@@ -775,7 +819,7 @@ await act(async () => {
 });
 check(
 	"cancelling backs out without spending a credit",
-	requests.length === beforeCredits && cardButton(creditCard, "确认重置") === undefined,
+	accountWrites(beforeCredits).length === 0 && cardButton(creditCard, "确认重置") === undefined,
 	creditCard.textContent.slice(0, 200)
 );
 
@@ -804,6 +848,53 @@ check(
 	Object.keys(resetRequests[0]?.headers ?? {}).some((key) => key.toLowerCase() === "x-dsh-cpa-monitor-action"),
 	JSON.stringify(resetRequests[0]?.headers)
 );
+
+// OAuth refresh, offered from the account editor and only where the route exists.
+await act(async () => {
+	cardButton(creditCard, "编辑").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	await Promise.resolve();
+});
+const oauthRefreshButton = cardButton(creditCard, "刷新 OAuth 凭证");
+check("the v8 editor offers an OAuth refresh", oauthRefreshButton !== undefined, creditCard.textContent.slice(0, 200));
+const beforeOauthRefresh = requests.length;
+await act(async () => {
+	oauthRefreshButton.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	await Promise.resolve();
+});
+await act(async () => {
+	await new Promise((resolve) => setTimeout(resolve, 0));
+});
+const oauthRefreshWrite = accountWrites(beforeOauthRefresh)[0];
+const oauthRefreshBody = JSON.parse(oauthRefreshWrite?.body ?? "{}");
+check(
+	"the refresh asks for the refresh action on that account",
+	oauthRefreshBody.action === "refresh" && oauthRefreshBody.authIndex === snapshot.accounts[0].authIndex,
+	JSON.stringify(oauthRefreshBody)
+);
+check("exactly one refresh is sent", accountWrites(beforeOauthRefresh).length === 1, JSON.stringify(accountWrites(beforeOauthRefresh).map((entry) => entry.body)));
+
+// A v0 deployment has no /credentials/refresh at all, so the control must go away.
+snapshot.cpa.api = "v0";
+await act(async () => {
+	[...window.document.body.querySelectorAll(".cps_iconButton")].find((node) => node.getAttribute("title") === "刷新").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	await Promise.resolve();
+});
+await act(async () => {
+	await new Promise((resolve) => setTimeout(resolve, 0));
+});
+check(
+	"a v0 deployment offers no OAuth refresh",
+	cardButton(cardOf(snapshot.accounts[0].email), "刷新 OAuth 凭证") === undefined,
+	cardOf(snapshot.accounts[0].email)?.textContent?.slice(0, 160)
+);
+snapshot.cpa.api = "v8";
+await act(async () => {
+	[...window.document.body.querySelectorAll(".cps_iconButton")].find((node) => node.getAttribute("title") === "刷新").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	await Promise.resolve();
+});
+await act(async () => {
+	await new Promise((resolve) => setTimeout(resolve, 0));
+});
 //#endregion
 
 //#region failed-request diagnostics

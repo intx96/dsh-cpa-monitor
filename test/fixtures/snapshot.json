@@ -8,6 +8,7 @@
     "commit": "ac02da6c",
     "buildDate": "2026-09-12T18:00:52Z",
     "homeVersion": null,
+    "api": "v8",
     "latestVersion": "v7.3.7",
     "updateAvailable": true
   },
