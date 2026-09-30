@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { readEffectiveConfig } from "./patch-config.mjs";
+import { Config } from "../lib/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageDir = join(here, "..");
@@ -218,7 +219,58 @@ const shellRoots = [
 	join(homedir(), ".dsh", "profiles", "web", "node_modules", "@deepseek-ai", "dsh-web-frontend", "dist", "assets"),
 	"/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets"
 ].filter(Boolean);
-check("installed shell assets found (for the icon check)", shellRoots.some((entry) => existsSync(entry)), shellRoots.join(", "));
+// Where the shell bundle lives is a deployment fact, not a package contract: a
+// machine that has not installed the harness yet legitimately has none. The icon
+// check in smoke-client.mjs skips itself in that case, so this only records the
+// search.
+const shellFound = shellRoots.find((entry) => existsSync(entry));
+if (shellFound === undefined) {
+	notes.push(`  note  shell bundle absent (looked in ${shellRoots.join(", ")}); the client icon check will skip`);
+} else {
+	notes.push(`  ok    installed shell assets found (for the icon check)`);
+}
+//#endregion
+
+//#region entry-config schema
+// The 0.2 Plugins page builds a row's configuration form out of the `Config` this
+// package exports: `dsh-settings` projects a form only when `"toJSON" in Config`,
+// and reads `type` / `dict` off the live object to decide which fields are even
+// editable. A Standard Schema object satisfies neither, so the row would get a
+// configure control that opens nothing — and a migrated `settings.yaml` section
+// would not be importable. These assertions pin that contract.
+check("Config validates an entry", (() => {
+	try {
+		return Config({ baseURL: "https://cpa.example.com:8317" }).baseURL === "https://cpa.example.com:8317";
+	} catch {
+		return false;
+	}
+})());
+check("Config applies schema defaults", Config({}).refreshIntervalMs === 300000 && Config({}).badgeMode === "lowest");
+check("Config rejects an unknown badge mode", (() => {
+	try {
+		Config({ badgeMode: "nope" });
+		return false;
+	} catch {
+		return true;
+	}
+})());
+if ("toJSON" in Config) {
+	check("Config serializes for the host's schema projection", typeof Config.toJSON === "function");
+	check("Config is an object schema the form projector understands", Config.type === "object" && Config.dict !== undefined);
+	const fields = Object.keys(Config.dict ?? {}).sort();
+	check(
+		"Config declares every editable field",
+		fields.length === 12 && fields.includes("baseURL") && fields.includes("managementKey") && fields.includes("badgeMode"),
+		fields.join(",")
+	);
+	check("Config marks the management key as a secret", Config.dict?.managementKey?.meta?.role === "secret");
+	check(
+		"Config marks no field volatile, so every field is user-editable",
+		Object.values(Config.dict ?? {}).every((field) => field?.meta?.volatile !== true)
+	);
+} else {
+	notes.push("  note  schemastery absent — Config fell back to Standard Schema, so the 0.2 configuration form is unavailable (run npm install)");
+}
 //#endregion
 
 process.stdout.write(`${notes.join("\n")}\n`);

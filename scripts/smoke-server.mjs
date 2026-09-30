@@ -15,9 +15,10 @@
  *   node scripts/smoke-server.mjs
  */
 
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
+import { homedir } from "node:os";
 import { readEffectiveConfig } from "./patch-config.mjs";
 import {
 	apply,
@@ -33,11 +34,64 @@ import {
 } from "../lib/index.js";
 import { parseErrorLog, resetLatestVersionCache } from "../lib/cpa.js";
 
-const DSH_LIB = "/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai";
-const { Context, Service } = await import(`${DSH_LIB}/cordis/lib/index.js`);
-const { SettingsProvider } = await import(`${DSH_LIB}/dsh-settings/lib/index.js`);
-
 const here = dirname(fileURLToPath(import.meta.url));
+const packageDir = join(here, "..");
+
+/**
+ * Every `@deepseek-ai` directory a host copy of the harness packages may live in,
+ * most specific first.
+ *
+ * This suite boots the REAL Cordis context and the REAL settings provider, so it
+ * borrows them from an installed harness. Where that install sits is a deployment
+ * fact, not a package contract — the desktop app keeps its copy inside an
+ * `app.asar` that plain Node cannot import — so candidates are tried in order and
+ * the first that resolves wins.
+ *
+ * @returns absolute directories that exist.
+ */
+function hostCandidates() {
+	const roots = [
+		process.env.DSH_HOST_MODULES,
+		"/opt/homebrew/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai"
+	];
+	const profiles = join(homedir(), ".dsh", "profiles");
+	if (existsSync(profiles)) {
+		roots.push(join(profiles, "node_modules", "@deepseek-ai"));
+		for (const entry of readdirSync(profiles)) roots.push(join(profiles, entry, "node_modules", "@deepseek-ai"));
+	}
+	roots.push(join(packageDir, ".test-env", "node_modules", "@deepseek-ai"));
+	return roots.filter((entry) => typeof entry === "string" && entry !== "" && existsSync(entry));
+}
+
+/**
+ * Import one package out of the first host copy that carries it.
+ * @param specifier - path inside an `@deepseek-ai` directory.
+ * @returns the imported module namespace.
+ * @throws {Error} naming every location tried when no copy has it.
+ */
+async function importHost(specifier) {
+	const roots = hostCandidates();
+	for (const root of roots) {
+		const file = join(root, specifier);
+		if (existsSync(file)) return import(pathToFileURL(file).href);
+	}
+	throw new Error(
+		`smoke-server: no harness install provides ${specifier}. This suite boots the real Cordis context, so it needs one — ` +
+			`install the harness (npm i -g @deepseek-ai/dsh) or point DSH_HOST_MODULES at an "@deepseek-ai" directory. ` +
+			`Looked in: ${roots.length === 0 ? "(none exist)" : roots.join(", ")}`
+	);
+}
+
+let Context;
+let Service;
+let SettingsProvider;
+try {
+	({ Context, Service } = await importHost("cordis/lib/index.js"));
+	({ SettingsProvider } = await importHost("dsh-settings/lib/index.js"));
+} catch (error) {
+	process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+	process.exit(2);
+}
 // Offline inputs: captures taken from the live deployment by
 // `scripts/capture-fixtures.mjs`, so the route tests need no network.
 const fixture = (name, asText = false) => {
