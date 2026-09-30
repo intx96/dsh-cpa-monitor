@@ -749,6 +749,23 @@ await act(async () => {
 	await Promise.resolve();
 });
 const editor = cardOf(snapshot.accounts[0].email).querySelector(".cps_cardEditor");
+// The notes moved behind hover, so the editor no longer prints them; they stay in
+// the accessible name, and the native tooltip covers a shell without `Tooltip`.
+check(
+	"the editor no longer prints its notes as body text",
+	!editor.textContent.includes(exports.zh["card.editPriorityHint"]) && !editor.textContent.includes(exports.zh["credits.refreshHint"]),
+	editor.textContent.slice(0, 160)
+);
+check(
+	"the priority note stays reachable on the glyph",
+	editor.querySelector(`.cps_hintDot[aria-label="${exports.zh["card.editPriorityHint"]}"]`)?.getAttribute("title") === exports.zh["card.editPriorityHint"],
+	editor.querySelector(".cps_hintDot")?.outerHTML
+);
+check(
+	"the refresh note stays reachable on its glyph",
+	editor.querySelector(`.cps_hintDot[aria-label="${exports.zh["credits.refreshHint"]}"]`) !== null,
+	editor.querySelector(".cps_hintDot")?.outerHTML
+);
 check("the editor discloses note and priority", editor !== null && editor.textContent.includes("备注") && editor.textContent.includes("优先级"), editor?.textContent?.slice(0, 120));
 const editorInputs = [...editor.querySelectorAll("input")];
 const beforeEdit = requests.length;
@@ -1548,7 +1565,11 @@ const modernExports = loadFace({
 		IconGaugeOutlineRegular: iconSpan("gauge"),
 		IconRefreshOutlineRegular: iconSpan("refresh"),
 		IconCloseOutlineRegular: iconSpan("close"),
-		IconChevronDownOutlineRegular: iconSpan("chevron")
+		IconChevronDownOutlineRegular: iconSpan("chevron"),
+		IconInfoOutlineRegular: iconSpan("info"),
+		// The shared tooltip the 0.2 shell exports; the main stub deliberately omits
+		// it so both branches of `Hint` get exercised.
+		Tooltip: ({ label, children }) => react.createElement("span", { "data-tooltip": label }, children)
 	}
 });
 const bareExports = loadFace({
@@ -1576,6 +1597,20 @@ async function renderOpenPanelWith(face) {
 const modern = await renderOpenPanelWith(modernExports);
 check("a rendered 0.2 badge mounts its panel", modern.panel !== undefined && modern.panel !== null);
 check("a 0.2 shell renders the badge icon", modern.badgeIcon !== null);
+// Hover notes: the same two hints, now reached through the shell's Tooltip.
+await act(async () => {
+	[...modern.panel.querySelectorAll(".cps_card")][0].querySelectorAll("button").forEach((node) => {
+		if (node.textContent === "编辑") node.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	});
+	await Promise.resolve();
+});
+const modernHints = [...modern.panel.querySelectorAll("[data-tooltip]")].map((node) => node.getAttribute("data-tooltip"));
+check(
+	"the shared tooltip carries the priority note",
+	modernHints.includes(exports.zh["card.editPriorityHint"]),
+	JSON.stringify(modernHints)
+);
+check("the shared tooltip carries the refresh note", modernHints.includes(exports.zh["credits.refreshHint"]), JSON.stringify(modernHints));
 check("a 0.2 shell renders the badge icon before the fallback dot", modern.holder.querySelector(".cps_dot") === null);
 check(
 	"a 0.2 shell renders the refresh control as an icon",
