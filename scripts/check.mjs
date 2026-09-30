@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { readEffectiveConfig } from "./patch-config.mjs";
-import { Config } from "../lib/index.js";
+import { Config, plainEntryConfig } from "../lib/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageDir = join(here, "..");
@@ -238,14 +238,22 @@ if (shellFound === undefined) {
 // editable. A Standard Schema object satisfies neither, so the row would get a
 // configure control that opens nothing — and a migrated `settings.yaml` section
 // would not be importable. These assertions pin that contract.
+// A live-editable field does not resolve to a VALUE on the host's patched
+// schemastery: it resolves to a writable cell the host writes into and announces
+// with `loader/volatile-update`. `plainEntryConfig` is the single place that
+// turns a resolved section back into plain values, so these read through it —
+// exactly as the runtime does.
 check("Config validates an entry", (() => {
 	try {
-		return Config({ baseURL: "https://cpa.example.com:8317" }).baseURL === "https://cpa.example.com:8317";
+		return plainEntryConfig(Config({ baseURL: "https://cpa.example.com:8317" })).baseURL === "https://cpa.example.com:8317";
 	} catch {
 		return false;
 	}
 })());
-check("Config applies schema defaults", Config({}).refreshIntervalMs === 300000 && Config({}).badgeMode === "lowest");
+check(
+	"Config applies schema defaults",
+	plainEntryConfig(Config({})).refreshIntervalMs === 300000 && plainEntryConfig(Config({})).badgeMode === "lowest"
+);
 check("Config rejects an unknown badge mode", (() => {
 	try {
 		Config({ badgeMode: "nope" });
@@ -254,6 +262,12 @@ check("Config rejects an unknown badge mode", (() => {
 		return true;
 	}
 })());
+check(
+	"a live-editable field resolves to a writable cell",
+	typeof plainEntryConfig === "function" &&
+		Object.values(Config({})).some((field) => field !== null && typeof field === "object" && typeof field.get === "function"),
+	"an unpatched schemastery resolves plain values, which is also accepted"
+);
 if ("toJSON" in Config) {
 	check("Config serializes for the host's schema projection", typeof Config.toJSON === "function");
 	check("Config is an object schema the form projector understands", Config.type === "object" && Config.dict !== undefined);
@@ -264,9 +278,18 @@ if ("toJSON" in Config) {
 		fields.join(",")
 	);
 	check("Config marks the management key as a secret", Config.dict?.managementKey?.meta?.role === "secret");
+	// Polarity matters and is easy to get backwards: the host's form keeps ONLY
+	// fields whose nearest `meta.volatile` ancestor exists (`volatileForm()`),
+	// and its write path refuses any path outside a volatile node. A schema that
+	// marks nothing validates fine and still yields NO form — the row gets a
+	// configure control that opens an empty page. Official entries do the same
+	// (`@deepseek-ai/dsh-subagent`'s `static Config` marks every field volatile),
+	// and this assertion is what caught the shipped schema getting it wrong.
+	const volatileFields = Object.entries(Config.dict ?? {}).filter(([, field]) => field?.meta?.volatile === true);
 	check(
-		"Config marks no field volatile, so every field is user-editable",
-		Object.values(Config.dict ?? {}).every((field) => field?.meta?.volatile !== true)
+		"Config marks every field volatile, the host's word for live-editable",
+		volatileFields.length === 12,
+		`${String(volatileFields.length)}/12 volatile: ${volatileFields.map(([name]) => name).join(",")}`
 	);
 } else {
 	notes.push("  note  schemastery absent — Config fell back to Standard Schema, so the 0.2 configuration form is unavailable (run npm install)");

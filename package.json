@@ -58,6 +58,6 @@
     "fixtures": "node scripts/capture-fixtures.mjs"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "3.18.2"
+    "@deepseek-ai/schemastery": "3.18.4"
   }
 }
