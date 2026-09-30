@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { readEffectiveConfig } from "./patch-config.mjs";
-import { Config, plainEntryConfig } from "../lib/index.js";
+import { Config, plainEntryConfig, resolveRuntimeConfig } from "../lib/index.js";
 import { fetchResetCredits, listErrorLogs, managementSurface, parseErrorLog, refreshCredential, resetCooldown } from "../lib/cpa.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -74,7 +74,7 @@ if (patch !== undefined) {
 	// key live in the user layer, so publishing this file cannot leak them.
 	check("committed patch carries no managementKey", config.managementKey === undefined, JSON.stringify(config.managementKey)?.slice(0, 20));
 	check("committed patch points at a placeholder endpoint", config.baseURL === "https://cpa.example.com:8317", String(config.baseURL));
-	check("config carries proxy candidates", Array.isArray(config.proxies) && config.proxies.length > 0, JSON.stringify(config.proxies));
+	check("the shipped default needs no proxy", Array.isArray(config.proxies) && config.proxies.length === 0, JSON.stringify(config.proxies));
 	check("config pins allowDirect explicitly", typeof config.allowDirect === "boolean", String(config.allowDirect));
 	const deployedKey = readEffectiveConfig().managementKey;
 	notes.push(
@@ -254,6 +254,12 @@ check("Config validates an entry", (() => {
 check(
 	"Config applies schema defaults",
 	plainEntryConfig(Config({})).refreshIntervalMs === 300000 && plainEntryConfig(Config({})).badgeMode === "lowest"
+);
+// Empty proxies must mean a direct connection, not "no transport at all".
+check(
+	"the default configuration is a direct connection",
+	plainEntryConfig(Config({})).proxies.length === 0 && resolveRuntimeConfig(Config({})).allowDirect === true,
+	JSON.stringify(resolveRuntimeConfig(Config({})).allowDirect)
 );
 check("Config rejects an unknown badge mode", (() => {
 	try {

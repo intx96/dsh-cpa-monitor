@@ -35,16 +35,17 @@
         # The management key is intentionally absent. Provide it either in the
         # Settings card (stored in the user layer) or through the
         # DSH_CPA_MANAGEMENT_KEY environment variable — never in this file.
-        # Outbound proxy candidates. A cold start probes every candidate
-        # CONCURRENTLY and the first success wins, so order only breaks ties and
-        # a dead candidate costs no latency; the winner is then reused over
-        # keep-alive connections. Empty list = connect directly.
-        # Measured on one host: a proxy that accepts TCP but never completes a
-        # tunnel costs nothing here — the race resolves on the working candidate
-        # and the dead one is skipped for the life of the process.
-        proxies:
-          - "http://127.0.0.1:1081"
-          - "http://127.0.0.1:1080"
+        # Outbound proxy candidates, in the order to prefer them. EMPTY BY
+        # DEFAULT: a deployment that can reach its CPA directly needs no proxy,
+        # and shipping loopback guesses here only made first-run failures look
+        # like plugin bugs. Set them in the settings card when the host really
+        # does have to tunnel out.
+        #
+        # With a list, a cold start probes every candidate CONCURRENTLY and the
+        # first success wins, so order only breaks ties and a dead candidate
+        # costs no latency; the winner is then reused over keep-alive
+        # connections. Empty list = connect directly (see `allowDirect` below).
+        proxies: []
         # Also try a direct connection once every proxy has failed. Off by
         # default: on a fenced network a direct leg only adds its own timeout.
         # Implicitly true when `proxies` is empty, since there is nothing else.
