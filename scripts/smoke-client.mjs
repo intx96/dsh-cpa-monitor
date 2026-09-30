@@ -1259,6 +1259,86 @@ await act(async () => {
 });
 //#endregion
 
+//#region icon names across host generations
+// The hosts renamed their icons: ≤ 0.1 exports `IconRefreshOutline16`,
+// ≥ 0.2 exports `IconRefreshOutlineRegular` (size is a prop now). Asking for the
+// legacy name alone made the refresh control fall back to its text label on 0.2 —
+// which wrapped onto two lines in the header. These render the panel against each
+// generation's export set, plus one that has neither.
+/** Instantiate the bundle face again with a different shell module table. */
+const loadFace = (table) =>
+	registration.factory((specifier) => {
+		if (specifier in table) return table[specifier];
+		throw new Error(`unexpected require("${specifier}")`);
+	});
+const iconSpan = (name) => (props) => react.createElement("span", { "data-icon": name, ...props });
+const modernExports = loadFace({
+	...moduleTable,
+	"@deepseek-ai/dsh-client-ui-primitives": {
+		Tag: primitives.Tag,
+		IconGaugeOutlineRegular: iconSpan("gauge"),
+		IconRefreshOutlineRegular: iconSpan("refresh"),
+		IconCloseOutlineRegular: iconSpan("close"),
+		IconChevronDownOutlineRegular: iconSpan("chevron")
+	}
+});
+const bareExports = loadFace({
+	...moduleTable,
+	"@deepseek-ai/dsh-client-ui-primitives": { Tag: primitives.Tag }
+});
+/** Render one badge, open its panel (portaled to the body), and read the header. */
+async function renderOpenPanelWith(face) {
+	const holder = window.document.createElement("div");
+	window.document.body.appendChild(holder);
+	const root = reactDomClient.createRoot(holder);
+	await act(async () => {
+		root.render(react.createElement(face.CpaStatusPanel, { wide: true, t: undefined }));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+	const badge = holder.querySelector(".cps_badge");
+	await act(async () => {
+		badge.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+		await Promise.resolve();
+	});
+	const panel = window.document.body.querySelector("[data-cpa-status-panel]");
+	return { holder, root, badgeIcon: holder.querySelector('.cps_iconWrap [data-icon="gauge"]'), header: panel?.querySelector(".cps_headerActions"), panel };
+}
+
+const modern = await renderOpenPanelWith(modernExports);
+check("a rendered 0.2 badge mounts its panel", modern.panel !== undefined && modern.panel !== null);
+check("a 0.2 shell renders the badge icon", modern.badgeIcon !== null);
+check("a 0.2 shell renders the badge icon before the fallback dot", modern.holder.querySelector(".cps_dot") === null);
+check(
+	"a 0.2 shell renders the refresh control as an icon",
+	modern.header !== undefined && modern.header !== null && modern.header.querySelector('[data-icon="refresh"]') !== null,
+	modern.header?.innerHTML?.slice(0, 200)
+);
+check(
+	"a 0.2 shell renders the close control as an icon",
+	modern.header !== undefined && modern.header !== null && modern.header.querySelector('[data-icon="close"]') !== null
+);
+check(
+	"a rendered icon suppresses the text fallback",
+	modern.header !== undefined && modern.header !== null && !modern.header.textContent.includes(exports.zh["action.refresh"]) && !modern.header.textContent.includes("×"),
+	modern.header?.textContent
+);
+await act(async () => {
+	modern.root.unmount();
+});
+
+const bare = await renderOpenPanelWith(bareExports);
+check("a bare shell still mounts its panel", bare.panel !== undefined && bare.panel !== null);
+check("a shell exporting no icon keeps the badge dot", bare.badgeIcon === null && bare.holder.querySelector(".cps_dot") !== null);
+check(
+	"a shell exporting no icon still offers the labelled controls",
+	bare.header !== undefined && bare.header !== null && bare.header.textContent.includes(exports.zh["action.refresh"]) && bare.header.textContent.includes("×"),
+	bare.header?.textContent
+);
+await act(async () => {
+	bare.root.unmount();
+});
+//#endregion
+
 //#region shell icon availability
 // The shell is what supplies the seed `primitives` module, so verify the icons
 // this panel asks for against the bundle that is actually installed.
@@ -1273,9 +1353,18 @@ if (shellBundles.length === 0) {
 	process.stdout.write("  SKIP  installed shell bundle not found; icon check skipped\n");
 } else {
 	const shell = readFileSync(join(shellAssets, shellBundles[0]), "utf8");
-	for (const name of ["IconGaugeOutline16", "IconRefreshOutline16", "IconCloseOutline16", "IconChevronDownOutline14", "Tag"]) {
-		check(`shell primitives export ${name}`, shell.includes(`${name}:`), "icon falls back gracefully when absent");
+	// Each control lists one name per host generation, so a shell only has to
+	// export one of them; the region above proves either name actually renders.
+	const iconFamilies = [
+		["IconGaugeOutlineRegular", "IconGaugeOutline16"],
+		["IconRefreshOutlineRegular", "IconRefreshOutline16"],
+		["IconCloseOutlineRegular", "IconCloseOutline16"],
+		["IconChevronDownOutlineRegular", "IconChevronDownOutline14"]
+	];
+	for (const names of iconFamilies) {
+		check(`shell exports one of ${names.join(" | ")}`, names.some((name) => shell.includes(`${name}:`)), "the control falls back to its text label");
 	}
+	check("shell primitives export Tag", shell.includes("Tag:"), "the unsaved marker falls back to a plain span");
 }
 //#endregion
 
