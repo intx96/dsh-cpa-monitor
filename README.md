@@ -102,7 +102,15 @@ dsh plugin --profile web remove dsh-cpa-monitor
 | 时区 | 重置时间的显示时区，例如 `Asia/Shanghai` |
 | 跳过证书校验 | 仅用于 CPA 使用自签名证书 |
 
-写盘位置是 `~/.dsh/settings.yaml` 的 `cpa-monitor:` 段；保存是**修订号围栏**的文档写入，校验不通过的写入会被拒绝并保持原值。命名空间注册为 `applies: 'live'`，所以**保存即生效**：后台立刻用新配置重建传输层并重启轮询。
+写盘位置跟着宿主版本走（见下表）；保存是**修订号围栏**的文档写入，校验不通过的写入会被拒绝并保持原值。两代都**保存即生效**：0.1 走命名空间的 `watch`，0.2 走下面的 volatile 通道，后台立刻用新配置重建传输层并重启轮询。
+
+#### 为什么每个字段都要标 `volatile`（承重细节）
+
+0.2 的表单**只保留标了 `meta.volatile` 的字段**：`dsh-settings` 的 `volatileForm()` 会把其它字段逐个丢掉，一个都不剩时直接返回 `undefined`，`describe()` 于是跳过整行——浏览器根本拿不到这个命名空间，表现就是「配置按钮点开一片空白」。它的 `write()` 也只接受 volatile 节点下的路径。官方就是这么写的：`@deepseek-ai/dsh-subagent` 的 `static Config` 给每个字段都挂了 `.volatile()`。
+
+我们 12 个字段全标。标法用的是 `.extra("volatile", true)` 而不是 `.volatile()`：`volatile()` 是宿主那份**打过补丁的 3.18.4** 才有的糖，其实现就是 `extra("volatile", true)`，而 npm 上公开发布的 3.18.2 没有这个方法——用 `extra` 两种构建都能出表单。
+
+标了 volatile 还有第二层语义：字段解析出来不是值，而是**可写单元格**（`{ get(), [Symbol.for("cosmokit.volatile.write")] }`）。而且只改这些字段时 Loader **不会重新 apply**，它把新值写进单元格再广播 `loader/volatile-update`（官方插件读的就是 `this.config.language.get()`）。所以服务端 half 在边界处用 `plainEntryConfig()` 统一解出普通值，并监听该事件重新激活运行时——这条路径不成立的话，0.2 上保存配置会静默无效。
 
 ### 备用：YAML（部署级默认值）
 
@@ -273,7 +281,7 @@ scripts/capture-fixtures.mjs  重抓上面这些 fixture
 
 profile 插件用 `link:` 装，包的真实路径在**本仓库**里、不在 profile 的 `node_modules` 里——所以它自己 `import` 的包会从仓库往上找，那里没有 `node_modules`。
 
-因此服务端 half 只用 `node:` 内置模块，**唯一例外是 `@deepseek-ai/schemastery`**：两代宿主都要真 schemastery 对象——0.1 的设置服务把 schema 当函数调用来解析命名空间，0.2 的配置编辑器则要求 `"toJSON" in Config` 才肯投影表单，还会遍历它脱敏 `role('secret')` 字段——手写的 Standard Schema 两样都做不到。它被精确锁在 host 同版本（3.18.2），且 `lib/schema.js` 先试本包依赖、再回退到 host 各 profile 的 `node_modules`：即使漏了 `npm install`，server half 仍能从组合层配置继续监控，只是配置表单不可用（日志会给出原因，`npm run check` 会用一条 note 说明）。
+因此服务端 half 只用 `node:` 内置模块，**唯一例外是 `@deepseek-ai/schemastery`**：两代宿主都要真 schemastery 对象——0.1 的设置服务把 schema 当函数调用来解析命名空间，0.2 的配置编辑器则要求 `"toJSON" in Config` 才肯投影表单，还会遍历它脱敏 `role('secret')` 字段——手写的 Standard Schema 两样都做不到。它被精确锁在 host 同版本（3.18.4，宿主那份是带 `volatile` 支持的构建），且 `lib/schema.js` 先试本包依赖、再回退到 host 各 profile 的 `node_modules`：即使漏了 `npm install`，server half 仍能从组合层配置继续监控，只是配置表单不可用（日志会给出原因，`npm run check` 会用一条 note 说明）。
 
 客户端 half 的依赖由 shell 的 seed 模块满足（`react` / `react-dom` / `@deepseek-ai/dsh-client-ui-primitives`）。
 
