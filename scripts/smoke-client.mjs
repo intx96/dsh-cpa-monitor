@@ -1096,6 +1096,22 @@ check("the row summary view is a one-liner without controls", (() => {
 	return text.includes(exports.zh["settings.description"]) && clean;
 })());
 
+check("a row page the host gives no form explains itself instead of rendering blank", (() => {
+	const holder = window.document.createElement("div");
+	window.document.body.appendChild(holder);
+	const root = reactDomClient.createRoot(holder);
+	act(() => {
+		root.render(react.createElement(exports.CpaRowConfig, { view: "page", form: undefined, t: undefined }));
+	});
+	const marked = holder.querySelector('[data-cpa-form="missing"]') !== null;
+	const said = (holder.textContent ?? "").includes(exports.zh["settings.formMissing"]);
+	const clean = holder.querySelector("input") === null && holder.querySelector("button") === null;
+	act(() => {
+		root.unmount();
+	});
+	return marked && said && clean;
+})());
+
 check("an unavailable row namespace renders nothing at all", (() => {
 	const holder = window.document.createElement("div");
 	window.document.body.appendChild(holder);
