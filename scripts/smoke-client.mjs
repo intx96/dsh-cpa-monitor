@@ -166,6 +166,8 @@ const errorLogParsed = JSON.parse(readFileSync(join(packageDir, "test", "fixture
 const refreshed = { ...snapshot, fetchedAt: Date.now(), durationMs: 4321, proxy: "http://127.0.0.1:1080" };
 // Swappable so one case can serve a log this parser cannot read.
 let diagnosticsLog = errorLogParsed;
+// Swappable so one case can serve a count that has already been spent.
+let creditsAvailable = 2;
 const requests = [];
 
 /**
@@ -197,7 +199,7 @@ window.fetch = (url, init) => {
 		return reply({
 			ok: true,
 			cached: false,
-			availableCount: 2,
+			availableCount: creditsAvailable,
 			totalEarnedCount: 3,
 			credits: [
 				{
@@ -828,6 +830,8 @@ await act(async () => {
 	await Promise.resolve();
 });
 const beforeReset = requests.length;
+// Upstream now reports the credit as spent; the panel must pick that up by itself.
+creditsAvailable = 0;
 await act(async () => {
 	cardButton(creditCard, "确认重置").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 	await Promise.resolve();
@@ -847,6 +851,23 @@ check(
 	"the reset carries the action header",
 	Object.keys(resetRequests[0]?.headers ?? {}).some((key) => key.toLowerCase() === "x-dsh-cpa-monitor-action"),
 	JSON.stringify(resetRequests[0]?.headers)
+);
+// Spending a credit is irreversible, so the panel must re-read the count rather
+// than keep showing the number it had while the click was being confirmed.
+check(
+	"a landed reset re-reads the credits instead of trusting the old count",
+	requests.slice(beforeReset).filter((entry) => entry.url.startsWith("/api/cpa-monitor/credits")).length === 1,
+	JSON.stringify(requests.slice(beforeReset).map((entry) => entry.url))
+);
+check(
+	"the panel then shows the post-spend count",
+	creditCard.querySelector(".cps_creditPanel")?.textContent.includes("可用 0 张"),
+	creditCard.querySelector(".cps_creditPanel")?.textContent?.slice(0, 160)
+);
+check(
+	"an account with nothing left cannot be reset again",
+	cardButton(creditCard, "重置")?.disabled === true,
+	`disabled=${String(cardButton(creditCard, "重置")?.disabled)}`
 );
 
 // OAuth refresh, offered from the account editor and only where the route exists.

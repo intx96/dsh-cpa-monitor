@@ -398,6 +398,18 @@ check(
 	`marker=${String(resetMarker)} call=${String(callLine)}`
 );
 check("the reset is defined once", resetCpaSource.split("export async function resetCooldown(").length === 2);
+// The spend must not be masked by the runtime's own short-lived credit cache:
+// showing the pre-reset count after a reset is how a second credit gets spent by
+// accident, so the reset branch has to drop that entry.
+check(
+	"a landed reset drops the cached credit count",
+	resetMarker !== -1 &&
+		resetIndexSource
+			.split("\n")
+			.slice(resetMarker, resetMarker + 16)
+			.some((line) => line.includes("creditsCache.delete(")),
+	"the reset branch must invalidate the credits cache"
+);
 check(
 	"the browser asks for a reset from one place only",
 	resetClientSource.split('action: "reset"').length === 2 &&
