@@ -179,7 +179,7 @@ window.fetch = (url, init) => {
 	const headers = (init && init.headers) || {};
 	requests.push({ url: target, method, headers, body: init && init.body });
 	const reply = (payload) => Promise.resolve({ status: 200, json: () => Promise.resolve(payload) });
-	const envelope = (body) => ({ ok: true, snapshot: body, error: null, ageMs: 1000, intervalMs: 300000, capabilities: ["account", "diagnostics", "cpa"] });
+	const envelope = (body) => ({ ok: true, snapshot: body, error: null, ageMs: 1000, intervalMs: 300000, capabilities: ["account", "diagnostics", "cpa", "reset"] });
 
 	if (target.startsWith("/api/cpa-monitor/account")) {
 		const patch = JSON.parse(init.body);
@@ -741,6 +741,69 @@ check(
 	fieldBody.action === "fields" && fieldBody.note === "backup account" && fieldBody.priority === 9,
 	JSON.stringify(fieldBody)
 );
+
+// Reset credits: a disclosure, then a confirmation, and only then a request.
+// Spending one is irreversible, so the assertions that matter are the ones about
+// what does NOT happen on the first click and on cancel.
+const creditCard = cardOf(snapshot.accounts[0].email);
+const creditLink = creditCard.querySelector(".cps_creditLink");
+check("reset credits are a control, not a bare number", creditLink !== null && creditLink.getAttribute("aria-expanded") === "false", creditLink?.textContent);
+check("the control carries the count", creditLink?.textContent.includes(String(snapshot.accounts[0].resetCredits)), creditLink?.textContent);
+const beforeCredits = requests.length;
+await act(async () => {
+	creditLink.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	await Promise.resolve();
+});
+const creditPanel = creditCard.querySelector(".cps_creditPanel");
+check("opening the panel sends nothing at all", requests.length === beforeCredits, JSON.stringify(requests.slice(beforeCredits)));
+check("the panel is expanded once opened", creditCard.querySelector(".cps_creditLink")?.getAttribute("aria-expanded") === "true");
+check("the panel states what a reset costs", creditPanel?.textContent.includes("消耗 1 张重置券"), creditPanel?.textContent?.slice(0, 160));
+check("the panel offers the reset", cardButton(creditCard, "重置") !== undefined, creditPanel?.textContent?.slice(0, 160));
+
+await act(async () => {
+	cardButton(creditCard, "重置").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	await Promise.resolve();
+});
+check(
+	"the first click only asks for confirmation",
+	requests.length === beforeCredits && cardButton(creditCard, "确认重置") !== undefined && creditCard.textContent.includes("确认重置？"),
+	creditCard.textContent.slice(0, 200)
+);
+await act(async () => {
+	cardButton(creditCard, "取消").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	await Promise.resolve();
+});
+check(
+	"cancelling backs out without spending a credit",
+	requests.length === beforeCredits && cardButton(creditCard, "确认重置") === undefined,
+	creditCard.textContent.slice(0, 200)
+);
+
+await act(async () => {
+	cardButton(creditCard, "重置").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	await Promise.resolve();
+});
+const beforeReset = requests.length;
+await act(async () => {
+	cardButton(creditCard, "确认重置").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	await Promise.resolve();
+});
+await act(async () => {
+	await new Promise((resolve) => setTimeout(resolve, 0));
+});
+const resetRequests = requests.slice(beforeReset).filter((entry) => entry.url.startsWith("/api/cpa-monitor/account"));
+const resetBody = JSON.parse(resetRequests[0]?.body ?? "{}");
+check("the confirmed click posts exactly one reset", resetRequests.length === 1, JSON.stringify(requests.slice(beforeReset).map((entry) => entry.url)));
+check(
+	"the reset asks for the reset action on that account",
+	resetBody.action === "reset" && resetBody.authIndex === snapshot.accounts[0].authIndex,
+	JSON.stringify(resetBody)
+);
+check(
+	"the reset carries the action header",
+	Object.keys(resetRequests[0]?.headers ?? {}).some((key) => key.toLowerCase() === "x-dsh-cpa-monitor-action"),
+	JSON.stringify(resetRequests[0]?.headers)
+);
 //#endregion
 
 //#region failed-request diagnostics
@@ -882,6 +945,10 @@ check("a stale server is called out, not silently tolerated", legacyPanelText.in
 check("a stale server hides the credential controls", legacyPanel?.querySelectorAll(".cps_cardAction").length === 0, String(legacyPanel?.querySelectorAll(".cps_cardAction").length));
 check("a stale server hides the editor too", legacyPanel?.querySelectorAll(".cps_cardEditor").length === 0);
 check("a stale server hides the diagnostics section", legacyPanel?.querySelectorAll(".cps_section").length === 0);
+check(
+	"a stale server offers no reset either",
+	legacyPanel?.querySelectorAll(".cps_creditLink").length === 0 && legacyPanel?.querySelectorAll(".cps_creditPanel").length === 0
+);
 check("a stale server shows no version chip", !legacyPanelText.includes("CPA 7.2.159") && !legacyPanelText.includes("版本未知"), "version chip rendered anyway");
 await act(async () => {
 	legacyRoot.unmount();
@@ -893,6 +960,24 @@ window.fetch = legacyFetch;
 check("a numeric priority becomes draft text", exports.priorityTextOf({ priority: 5 }) === "5");
 check("a missing priority drafts blank, not the word undefined", exports.priorityTextOf({}) === "" && exports.priorityTextOf({ priority: null }) === "", JSON.stringify(exports.priorityTextOf({})));
 check("a non-numeric priority drafts blank too", exports.priorityTextOf({ priority: "5" }) === "" && exports.priorityTextOf({ priority: Number.NaN }) === "");
+
+// The reset-credit payload is upstream-shaped rather than part of CPA's own
+// contract, so the reader has to cope with names it has not seen. What it must
+// never do is invent an expiry: a credit whose date it cannot read reports null.
+check("reset credits read a list under any of the usual names", exports.resetCreditEntries({ available_count: 1, credits: [{ expires_at: 1790000000 }] }).length === 1);
+check("a seconds-based expiry is widened to an instant", exports.resetCreditEntries({ credits: [{ expires_at: 1790000000 }] })[0].expiresAt === 1790000000000);
+check(
+	"an ISO expiry parses",
+	exports.resetCreditEntries({ items: [{ expiresAt: "2026-10-07T12:00:00Z" }] })[0].expiresAt === Date.parse("2026-10-07T12:00:00Z"),
+	JSON.stringify(exports.resetCreditEntries({ items: [{ expiresAt: "2026-10-07T12:00:00Z" }] }))
+);
+check("a bare scalar expiry still lists one credit", exports.resetCreditEntries({ available_count: 1, valid_until: "2026-10-07T12:00:00Z" }).length === 1);
+check(
+	"an unreadable expiry is reported as unknown, never invented",
+	exports.resetCreditEntries({ available_count: 2, credits: [{}, {}] }).every((entry) => entry.expiresAt === null),
+	JSON.stringify(exports.resetCreditEntries({ available_count: 2, credits: [{}, {}] }))
+);
+check("no payload at all lists nothing", exports.resetCreditEntries(null).length === 0 && exports.resetCreditEntries(undefined).length === 0);
 //#endregion
 
 // Rail mode (collapsed sidebar).

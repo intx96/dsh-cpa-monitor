@@ -18,7 +18,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { readEffectiveConfig } from "./patch-config.mjs";
 import { Config, plainEntryConfig } from "../lib/index.js";
-import { listErrorLogs, parseErrorLog } from "../lib/cpa.js";
+import { listErrorLogs, managementSurface, parseErrorLog, resetCooldown } from "../lib/cpa.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageDir = join(here, "..");
@@ -338,6 +338,72 @@ const fakeListingClient = {
 const listing = await listErrorLogs(fakeListingClient, { baseURL: "https://cpa.example.com:8317", managementKey: "k" }, 5);
 check("a listing entry prefers CPA's absolute modified time", listing.files[0]?.at === 1789448655000, String(listing.files[0]?.at));
 check("the listing keeps every file CPA reports", listing.files.length === 2, String(listing.files.length));
+//#endregion
+
+//#region management surface and the guarded reset
+// CPA 8 prefers `/v8/management` and still answers `/v0/management`; one build
+// serves both by probing once. These use a fake transport, so they say exactly
+// which path each generation is spoken to.
+const probeClient = (status) => {
+	const calls = [];
+	return {
+		calls,
+		client: {
+			request: async (url, init) => {
+				calls.push(`${init?.method ?? "GET"} ${url}`);
+				return { status, body: "{}", headers: {} };
+			}
+		}
+	};
+};
+const base = { baseURL: "https://cpa.example.com:8317/", managementKey: "k" };
+const v8Probe = probeClient(200);
+check("a v8 deployment resolves to the v8 surface", (await managementSurface(v8Probe.client, base)).id === "v8", JSON.stringify(v8Probe.calls));
+check(
+	"the surface is probed once per client",
+	(await managementSurface(v8Probe.client, base)).id === "v8" && v8Probe.calls.length === 1,
+	JSON.stringify(v8Probe.calls)
+);
+const v0Probe = probeClient(404);
+check("an older deployment falls back to v0", (await managementSurface(v0Probe.client, base)).id === "v0", JSON.stringify(v0Probe.calls));
+const refusedProbe = probeClient(401);
+let refused = null;
+try {
+	await managementSurface(refusedProbe.client, base);
+} catch (error) {
+	refused = error instanceof Error ? error.message : String(error);
+}
+check("a rejected key is reported, not silently downgraded", refused !== null && refused.includes("management key rejected"), String(refused));
+
+const resetClient = probeClient(200);
+await resetCooldown(resetClient.client, { ...base, managementSurface: undefined }, "a1b2");
+await resetCooldown(resetClient.client, base, "a1b2");
+check(
+	"the reset goes to v8's cooldown route with the credential's auth_index",
+	resetClient.calls[1] === "POST https://cpa.example.com:8317/v8/management/routing/cooldown/reset",
+	JSON.stringify(resetClient.calls)
+);
+// The reset spends an expiring, scarce credit, so the property worth pinning is
+// that nothing but the panel's confirmed POST can reach it.
+const resetIndexSource = readFileSync(join(packageDir, "lib", "index.js"), "utf8");
+const resetCpaSource = readFileSync(join(packageDir, "lib", "cpa.js"), "utf8");
+const resetClientSource = readFileSync(join(packageDir, "lib", "client.js"), "utf8");
+const callSites = resetIndexSource.split("\n").filter((line) => line.includes("resetCooldown(")).length;
+const resetMarker = resetIndexSource.split("\n").findIndex((line) => line.includes('body.action === "reset"'));
+const callLine = resetIndexSource.split("\n").findIndex((line) => line.includes("await resetCooldown("));
+check("the reset route has exactly one call site", callSites === 1, String(callSites));
+check(
+	"that call site is the panel's confirmed reset action",
+	resetMarker !== -1 && callLine > resetMarker && callLine - resetMarker < 12,
+	`marker=${String(resetMarker)} call=${String(callLine)}`
+);
+check("the reset is defined once", resetCpaSource.split("export async function resetCooldown(").length === 2);
+check(
+	"the browser asks for a reset from one place only",
+	resetClientSource.split('action: "reset"').length === 2 &&
+		resetClientSource.split('action: "reset"').every((part, index) => index === 0 || part.includes("credits")),
+	String(resetClientSource.split('action: "reset"').length - 1)
+);
 //#endregion
 
 process.stdout.write(`${notes.join("\n")}\n`);

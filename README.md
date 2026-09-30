@@ -167,6 +167,16 @@ schema 默认值  →  组合层（本包 cordis.patch.yml）  →  用户层
 
 写操作的三条约束：浏览器**只传 `authIndex`**，服务端从快照解析出凭据文件名再去写（浏览器没有机会指名任意文件）；`disabled` 必须是布尔、`priority` 必须是数字；被拒绝的请求不会打到 CPA（测试里断言了这一点）。
 
+### 重置券（会消耗额度，谨慎）
+
+卡片底部那行 `重置券 N` 是一个**链接**，不是纯文本：点开在卡片内就地展开一小块面板，显示可用张数与每张的到期时间，再给一个 `重置` 按钮。点 `重置` **不会**直接执行——它先变成一行确认（「确认重置？这会消耗 1 张重置券，且无法撤销。」），只有再点 `确认重置` 才会发请求。
+
+这么设计是因为 `POST /v8/management/routing/cooldown/reset`（旧的 v0 是 `POST /reset-quota`）**每调用一次就烧掉一张 `rate_limit_reset_credits`**，而重置券是稀缺且**会过期**的资源。所以：
+
+- 插件**任何**自动路径都不会调用它：不轮询、不重试、不在刷新时顺手调用；`resetCooldown` 在整个仓库里只有一个调用点，就是那条带动作头、只接受 loopback 与 `POST` 的写路由，`npm run check` 里有一条断言钉住这一点。
+- 打开面板、点 `重置`、点 `取消` 都**不发任何请求**（客户端套件里各有断言）。
+- 重置券的到期时间来自上游订阅接口的 `rate_limit_reset_credits` 原样透传。那份载荷**不是 CPA 自己的管理契约**，字段名以实测为准，所以读取是宽容的：认不出的到期时间显示「到期时间未提供」，绝不编一个出来。
+
 ### 失败原因（只读）
 
 面板底部新增「最近失败请求」区块，点「查看」列出 CPA 的 `request-error-logs`，点「详情」在**该行正下方**就地展开单篇（按钮随之变成「收起」，再点即收起）。展开体是渲染在被点那一行**内部**的，不是追加到列表末尾——追加到末尾会让「点了按钮」看起来像没反应。展开出来的是**解析后的摘要**，不是请求正文：
@@ -188,6 +198,22 @@ schema 默认值  →  组合层（本包 cordis.patch.yml）  →  用户层
 这里修过一个真实 bug：早期实现对每个时间戳都强行拼 `Z`，等于把写入端的墙钟当成 UTC。在一个 `+08:00` 的部署上，列表里所有失败都比真实时间晚 8 小时（看起来像「比现在快了 3 小时」），而正文里本来就带 `Z` 的时间戳被拼成 `…ZZ` 直接解析失败。
 
 两个必要的诚实说明：CPA 的 `request-log` 打开时失败记录会并进请求日志目录，`request-error-logs` 就是空的——插件会把这种情况**明说**，而不是让你以为「没有失败」。另外 `/logs` 那个接口是 7MB / 13 万行的火管（实测直接超时），所以刻意没接。
+
+### 管理 API：v8 优先，v0 回退
+
+CPA 8 引入了 `/v8/management`，并把它自己的 `/v0/management` 标注为「临近废弃」。本插件**两代都支持**：启动后第一次调用会先用一次只读探针（v8 独有的配额提供方目录，很小且不含机密）判定这台 CPA 说的是哪一代，把结果缓存在客户端上，之后所有调用都走那一代；探针被拒（401/403）会照旧报「management key rejected」，而不是偷偷降级。
+
+| 用途 | v8 | v0 |
+|---|---|---|
+| 凭据列表 | `GET /credentials` | `GET /auth-files` |
+| 开关 / 字段 | `PATCH /credentials/status`、`/credentials/fields` | `PATCH /auth-files/status`、`/auth-files/fields` |
+| 带凭据的上游调用 | `POST /requests/api-call` | `POST /api-call` |
+| 错误日志 | `GET /observability/logs/errors[/:name]` | `GET /request-error-logs[/:name]` |
+| 最新版本 | `GET /server/latest-version` | `GET /latest-version` |
+| 重置冷却 | `POST /routing/cooldown/reset` | `POST /reset-quota` |
+| request-log 开关 | 无（在配置树里） | `GET /request-log`（v8 服务器仍然应答） |
+
+快照的 `cpa.api` 会写明这次用的是 `v8` 还是 `v0`。v8 的 `/credentials` 是否仍返回 `email`/`priority`/`note`/`success`/`failed`/`recent_requests` 等字段以实测为准——读取是宽容的，缺哪一项就那项显示为空，而不是让整个快照失败。
 
 ### CPA 版本
 
@@ -232,11 +258,11 @@ schema 默认值  →  组合层（本包 cordis.patch.yml）  →  用户层
 | `GET\|POST /api/cpa-monitor/refresh` | 强制刷新 |
 | `GET /api/cpa-monitor/diagnostics` | 失败请求诊断：列出 `request-error-logs`（含从文件名解析出的端点与时间戳） |
 | `GET /api/cpa-monitor/diagnostics?file=<name>` | 读某一篇并解析出归属账号、模型、重试次数、上游状态与错误码/文案 |
-| `POST /api/cpa-monitor/account` | 凭据写操作：`{action:"status", authIndex, disabled}` 开关账号；`{action:"fields", authIndex, note?, priority?}` 改备注/优先级 |
+| `POST /api/cpa-monitor/account` | 凭据写操作：`{action:"status", authIndex, disabled}` 开关账号；`{action:"fields", authIndex, note?, priority?}` 改备注/优先级；`{action:"reset", authIndex}` 重置该账号的配额与冷却（**消耗 1 张重置券**，只由面板的二次确认发起） |
 
 所有路由都只接受 loopback 对端；**强制刷新与所有凭据写操作**还必须带 `x-dsh-cpa-monitor-action` 请求头（跨站页面能打 localhost，但带不上自定义头，preflight 会失败）。写操作只接受 `POST`。
 
-快照载荷里还有一个 `capabilities` 数组（当前是 `["account","diagnostics","cpa"]`）。这是给**热重载错配**用的：`lib/client.js` 由 HMR 即时生效，`lib/index.js` 只有重启 `dsh web` 才会换，所以「浏览器这半新、服务端那半旧」是正常状态。客户端按这份声明决定渲染哪些控件——声明缺失（旧服务端）时，面板会显示一条「服务端 half 是旧版，请重启 dsh web」，并隐藏账号开关/编辑/诊断/版本 chip，而不是让你点了之后拿到一句看不懂的错。
+快照载荷里还有一个 `capabilities` 数组（当前是 `["account","diagnostics","cpa","reset"]`）。这是给**热重载错配**用的：`lib/client.js` 由 HMR 即时生效，`lib/index.js` 只有重启 `dsh web` 才会换，所以「浏览器这半新、服务端那半旧」是正常状态。客户端按这份声明决定渲染哪些控件——声明缺失（旧服务端）时，面板会显示一条「服务端 half 是旧版，请重启 dsh web」，并隐藏账号开关/编辑/诊断/版本 chip，而不是让你点了之后拿到一句看不懂的错。
 
 ---
 
@@ -259,7 +285,7 @@ npm run fixtures                  # 从真机重抓离线 fixture（快照 + 错
 
 | 脚本 | 覆盖范围 |
 |---|---|
-| `scripts/check.mjs` | 包契约：`exports["./client"]`、`dsh.client.platform`、补丁层 insert 形状、服务端只允许 `node:` + 相对路径 + 锁死的 schemastery、客户端 `require` 全在 shell seed 表内；另含两条纯函数回归，因为集成套件需要宿主安装、不总能跑：Config 的 0.2 表单契约（toJSON/type/dict/secret/每字段 volatile），以及日志时间戳（正文偏移优先、文件名兜底按宿主时区、列表优先绝对 `modified`） |
+| `scripts/check.mjs` | 包契约：`exports["./client"]`、`dsh.client.platform`、补丁层 insert 形状、服务端只允许 `node:` + 相对路径 + 锁死的 schemastery、客户端 `require` 全在 shell seed 表内；另含两条纯函数回归，因为集成套件需要宿主安装、不总能跑：Config 的 0.2 表单契约（toJSON/type/dict/secret/每字段 volatile），以及日志时间戳（正文偏移优先、文件名兜底按宿主时区、列表优先绝对 `modified`）；还有管理 API 面（v8 探针命中 / 404 回退 v0 / 401 不降级）与**重置的不可自动化**（`resetCooldown` 只有一个调用点、且在确认动作里） |
 | `scripts/smoke-server.mjs` | 在**真 cordis 上下文**里跑插件，配**真 `SettingsProvider`**（内存存储）+ 桩 `webServer`；另有一套**假 CPA 传输**（canned 响应 + 写入日志）用来验证凭据写操作与诊断，绝不碰生产代理：命名空间注册、三层优先级、`live` 生效、修订围栏写入、密钥脱敏、校验拒绝（错协议/超时倒置/坏时区）、重置回默认层、loopback 围栏、action 头守卫、缓存、无 settings 服务时的降级、真机快照、版本元信息与 `updateAvailable`、按 authIndex→文件名寻址的凭据写入及全部拒绝路径、诊断列表/单篇解析/路径穿越拒绝/未登记文件拒绝、真机只读诊断 |
 | `scripts/smoke-client.mjs` | jsdom + React 18 真渲染：插槽注册形状、`pickBadge` 选择规则与三段式格式（含 20% 边界、禁用账号、30d 回退、缺窗口 `-`、累加与口径）、版本 chip、账号开关与备注/优先级编辑的请求形状与回填、失败诊断列表/详情渲染、真机快照 fixture 渲染、面板文案位置（副标题=CPA 地址，页脚不含地址/代理）、设置卡片的折叠/展开与 `aria-expanded`、`Tag` 未保存标记、保存后自动折叠、折叠不丢暂存、每个字段的渲染/暂存/保存/清除/校验阻断、空密钥不写入、秒↔毫秒换算、代理列表↔数组、只读与不可用状态、侧栏图标中性色、图标名跨代次回退、**失败详情就地展开**（展开体在被点行内部、只给解析摘要、其它行不展开、再点收起、解析不出时才退回正文）、**0.2 插件页行配置**（`dsh-cpa-monitor#cpa-monitor` 注册形状、`summary`/`page` 两种视图、`form.mutate` 的 path-op 与 revision、写入被拒绝的提示、命名空间晚于首屏出现时的 hook 顺序回归） |
 | `scripts/patch-config.mjs` | 用真 YAML 解析读本包补丁（正则会被注释里的示例值骗到） |
