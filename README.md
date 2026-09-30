@@ -85,7 +85,7 @@ dsh plugin --profile web remove dsh-cpa-monitor
 
 0.1 的老卡片走的是 `settings.plugin.item` + `settingsScope`，这两样在 0.2 里已经被删掉（`settings.plugin.item` 在 0.2.0-rc.2 的 98 个根 slot 里已不存在，`settingsScope` 服务也一并没了），所以那一分支在 0.2 上只是静静地不注册，不会报错。
 
-卡片与官方各设置页**逐项对齐**（按官方 `PluginCard` 的实现照做）：默认折叠、`li` 卡片壳、15px/600 标题 + 13px 描述、`.5px` `border-l4` 描边、展开后换 `bg-layer-2`、`IconChevronDownOutline14` 旋转 180°、未保存时在标题栏挂官方的 `Tag`（`tone: "neutral"`）、**保存成功后自动折叠**、`aria-label` 也是官方的「展开/收起: <标题>」形式。折叠不会丢暂存。0.2 的插件页版本不套卡片壳（页面已经画了标题和面包屑），表单直接铺开、常驻显示。展开后是 12 个字段，每个都显示当前生效值、是否被覆盖（`已覆盖` 徽标）以及一个 `清除` 回到默认层：
+0.1 的那张卡片与官方各设置页**逐项对齐**（按官方 `PluginCard` 的实现照做）：默认折叠、`li` 卡片壳、15px/600 标题 + 13px 描述、`.5px` `border-l4` 描边、展开后换 `bg-layer-2`、`IconChevronDownOutline14` 旋转 180°、未保存时在标题栏挂官方的 `Tag`（`tone: "neutral"`）、**保存成功后自动折叠**、`aria-label` 也是官方的「展开/收起: <标题>」形式。折叠不会丢暂存。0.2 的插件页版本不套卡片壳（页面已经画了标题和面包屑），表单直接铺开、常驻显示。展开后是 12 个字段，每个都显示当前生效值、是否被覆盖（`已覆盖` 徽标）以及一个 `清除` 回到默认层：
 
 | 字段 | 说明 |
 |---|---|
@@ -109,12 +109,21 @@ dsh plugin --profile web remove dsh-cpa-monitor
 配置分三层，逐层覆盖：
 
 ```
-schema 默认值  →  组合层（本包 cordis.patch.yml）  →  用户层（settings.yaml，即配置页写入）
+schema 默认值  →  组合层（本包 cordis.patch.yml）  →  用户层
 ```
 
-**本仓库刻意不含密钥。** `cordis.patch.yml`（会被提交）只有占位地址且没有 `managementKey`；某个部署的真实地址与密钥属于**用户层**，也就是 `~/.dsh/settings.yaml` 的 `cpa-monitor:` 段（配置页写的就是它），或环境变量 `DSH_CPA_MANAGEMENT_KEY`。`npm run check` 里有一条扫描会挡住「密钥形状的字面量」重新混进被提交的文件。
+**用户层落在哪里，取决于宿主版本**（这是两代之间唯一还没统一的地方）：
 
-要在整个部署里改默认值（例如给新 profile 准备一套），用 id 定位补丁写进 `~/.dsh/profiles/web/cordis.patch.yml`：
+| DSH | 用户层 | 谁写它 |
+|---|---|---|
+| ≤ 0.1 | `~/.dsh/settings.yaml` 的 `cpa-monitor:` 段 | 本包注册的设置命名空间 |
+| ≥ 0.2 | 当前 profile 自己的配置文档 | 宿主的配置编辑器（表单由本包导出的 `Config` 派生） |
+
+两代都是保存即生效：0.1 走命名空间的 `watch`，0.2 由配置编辑器重载本行、重新执行 `apply`。
+
+**本仓库刻意不含密钥。** `cordis.patch.yml`（会被提交）只有占位地址且没有 `managementKey`；某个部署的真实地址与密钥属于**用户层**（上述两处之一），或环境变量 `DSH_CPA_MANAGEMENT_KEY`。`npm run check` 里有一条扫描会挡住「密钥形状的字面量」重新混进被提交的文件。
+
+要在整个部署里改默认值（例如给新 profile 准备一套），用 id 定位补丁写进 `~/.dsh/profiles/<profile>/cordis.patch.yml`：
 
 ```yaml
 - id: cpa-monitor
@@ -264,7 +273,7 @@ scripts/capture-fixtures.mjs  重抓上面这些 fixture
 
 profile 插件用 `link:` 装，包的真实路径在**本仓库**里、不在 profile 的 `node_modules` 里——所以它自己 `import` 的包会从仓库往上找，那里没有 `node_modules`。
 
-因此服务端 half 只用 `node:` 内置模块，**唯一例外是 `@deepseek-ai/schemastery`**：设置服务需要真 schemastery 对象（它把 schema 当函数调用来解析命名空间、用 `toJSON()` 喂配置界面、并遍历它脱敏 `role('secret')` 字段），手写的 Standard Schema 满足不了。它被精确锁在 host 同版本（3.18.2），且 `lib/schema.js` 先试本包依赖、再回退到 host 各 profile 的 `node_modules`：即使漏了 `npm install`，server half 仍能从组合层配置继续监控，只是设置卡片不可用（日志会给出原因）。
+因此服务端 half 只用 `node:` 内置模块，**唯一例外是 `@deepseek-ai/schemastery`**：两代宿主都要真 schemastery 对象——0.1 的设置服务把 schema 当函数调用来解析命名空间，0.2 的配置编辑器则要求 `"toJSON" in Config` 才肯投影表单，还会遍历它脱敏 `role('secret')` 字段——手写的 Standard Schema 两样都做不到。它被精确锁在 host 同版本（3.18.2），且 `lib/schema.js` 先试本包依赖、再回退到 host 各 profile 的 `node_modules`：即使漏了 `npm install`，server half 仍能从组合层配置继续监控，只是配置表单不可用（日志会给出原因，`npm run check` 会用一条 note 说明）。
 
 客户端 half 的依赖由 shell 的 seed 模块满足（`react` / `react-dom` / `@deepseek-ai/dsh-client-ui-primitives`）。
 
