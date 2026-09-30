@@ -556,10 +556,18 @@ check(
 const subtitleText = panel?.querySelector(".cps_subtitle")?.textContent ?? "";
 check("the subtitle carries the CPA address", subtitleText.includes(snapshot.baseURL), subtitleText);
 check("the subtitle does not carry the proxy", !subtitleText.includes(snapshot.proxy), subtitleText);
+// The quota note moved from a permanent footnote onto the title's hover hint.
 const footnoteText = panel?.querySelector(".cps_note")?.textContent ?? "";
-check("the footnote is the quota note alone", footnoteText.includes("剩余百分比") && !footnoteText.includes("当前传输"), footnoteText);
-check("the footnote names neither the CPA address nor the proxy", !footnoteText.includes(snapshot.baseURL) && !footnoteText.includes(snapshot.proxy), footnoteText);
-check("the footnote no longer points at the settings page", !footnoteText.includes("设置 → 插件"), footnoteText);
+const quotaNote = exports.zh["note.countdown"];
+check("the quota note is no longer printed at the foot of the panel", footnoteText === "" && !panelText.includes(quotaNote), footnoteText);
+const titleHint = [...(panel?.querySelectorAll(".cps_title .cps_hintDot") ?? [])].find((node) => node.getAttribute("aria-label") === quotaNote);
+check("the title carries the quota note", titleHint !== undefined, panel?.querySelector(".cps_title")?.innerHTML?.slice(0, 160));
+check(
+	"the note is reachable without the shared tooltip",
+	titleHint?.getAttribute("title") === quotaNote,
+	titleHint?.outerHTML?.slice(0, 140)
+);
+check("the note names neither the CPA address nor the proxy", !quotaNote.includes(snapshot.baseURL) && !quotaNote.includes(snapshot.proxy));
 const failedAccount = snapshot.accounts.find((account) => typeof account.error === "string" && account.error !== "");
 check(
 	"panel surfaces a per-account failure verbatim",
@@ -1611,6 +1619,7 @@ check(
 	JSON.stringify(modernHints)
 );
 check("the shared tooltip carries the refresh note", modernHints.includes(exports.zh["credits.refreshHint"]), JSON.stringify(modernHints));
+check("the shared tooltip carries the quota note", modernHints.includes(exports.zh["note.countdown"]), JSON.stringify(modernHints));
 check("a 0.2 shell renders the badge icon before the fallback dot", modern.holder.querySelector(".cps_dot") === null);
 check(
 	"a 0.2 shell renders the refresh control as an icon",
