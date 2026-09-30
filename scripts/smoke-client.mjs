@@ -856,6 +856,20 @@ await act(async () => {
 });
 const oauthRefreshButton = cardButton(creditCard, "刷新 OAuth 凭证");
 check("the v8 editor offers an OAuth refresh", oauthRefreshButton !== undefined, creditCard.textContent.slice(0, 200));
+const editorRow = oauthRefreshButton?.parentElement;
+check(
+	"the refresh shares the row with the editor's own actions",
+	editorRow !== null &&
+		editorRow !== undefined &&
+		editorRow === cardButton(creditCard, "取消")?.parentElement &&
+		editorRow === cardButton(creditCard, "保存")?.parentElement,
+	editorRow?.className
+);
+check(
+	"the refresh sits before cancel and save",
+	[...(editorRow?.querySelectorAll("button") ?? [])].map((node) => node.textContent).join("|") === "刷新 OAuth 凭证|取消|保存",
+	[...(editorRow?.querySelectorAll("button") ?? [])].map((node) => node.textContent).join("|")
+);
 const beforeOauthRefresh = requests.length;
 await act(async () => {
 	oauthRefreshButton.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
