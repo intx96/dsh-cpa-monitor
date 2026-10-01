@@ -150,6 +150,7 @@ check("fixtures can be re-captured", existsSync(join(packageDir, "scripts", "cap
 // Repo-wide secret sweep: anything a publish would carry.
 const TRACKED = [
 	"README.md",
+	"DEVELOPMENT.md",
 	"package.json",
 	"cordis.patch.yml",
 	"lib/index.js",
