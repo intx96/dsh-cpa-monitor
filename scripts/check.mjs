@@ -394,14 +394,31 @@ check(
 const resetIndexSource = readFileSync(join(packageDir, "lib", "index.js"), "utf8");
 const resetCpaSource = readFileSync(join(packageDir, "lib", "cpa.js"), "utf8");
 const resetClientSource = readFileSync(join(packageDir, "lib", "client.js"), "utf8");
-const callSites = resetIndexSource.split("\n").filter((line) => line.includes("resetCooldown(")).length;
-const resetMarker = resetIndexSource.split("\n").findIndex((line) => line.includes('body.action === "reset"'));
-const callLine = resetIndexSource.split("\n").findIndex((line) => line.includes("await resetCooldown("));
-check("the reset route has exactly one call site", callSites === 1, String(callSites));
+const indexLines = resetIndexSource.split("\n");
+const clearCalls = indexLines
+	.map((line, index) => (line.includes("await resetCooldown(") ? index : -1))
+	.filter((index) => index !== -1);
+const resetMarker = indexLines.findIndex((line) => line.includes('body.action === "reset"'));
+const consumeMarkerEarly = indexLines.findIndex((line) => line.includes('body.action === "consume"'));
+// Two call sites now, and both are guarded actions: the panel's own "clear the local
+// cooldown", and the follow-up leg of "use a reset credit".
+check("the local clear is called from exactly two places", clearCalls.length === 2, JSON.stringify(clearCalls));
 check(
-	"that call site is the panel's confirmed reset action",
-	resetMarker !== -1 && callLine > resetMarker && callLine - resetMarker < 12,
-	`marker=${String(resetMarker)} call=${String(callLine)}`
+	"one of them is the panel's confirmed clear action",
+	resetMarker !== -1 && clearCalls.some((index) => index > resetMarker && index - resetMarker < 12),
+	`marker=${String(resetMarker)} calls=${JSON.stringify(clearCalls)}`
+);
+// A spent credit that leaves the cooldown behind is what forced a second, manual
+// click; the spend now finishes the job itself.
+check(
+	"a spent credit also clears the local cooldown",
+	consumeMarkerEarly !== -1 && clearCalls.some((index) => index > consumeMarkerEarly && index - consumeMarkerEarly < 24),
+	`consume=${String(consumeMarkerEarly)} calls=${JSON.stringify(clearCalls)}`
+);
+check(
+	"a half-done spend is reported rather than swallowed",
+	indexLines.some((line) => line.includes("warning =")) && indexLines.some((line) => line.includes("{ ...payload(), warning }")),
+	"the consume branch must report a follow-up failure"
 );
 check("the reset is defined once", resetCpaSource.split("export async function resetCooldown(").length === 2);
 // The spend must not be masked by the runtime's own short-lived credit cache:

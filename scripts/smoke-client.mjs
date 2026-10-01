@@ -168,6 +168,9 @@ const refreshed = { ...snapshot, fetchedAt: Date.now(), durationMs: 4321, proxy:
 let diagnosticsLog = errorLogParsed;
 // Swappable so one case can serve a count that has already been spent.
 let creditsAvailable = 2;
+// Set when the server should report a spend that landed but whose follow-up leg
+// (clearing the local cooldown) did not.
+let consumeWarning = null;
 const requests = [];
 
 /**
@@ -181,7 +184,7 @@ window.fetch = (url, init) => {
 	const headers = (init && init.headers) || {};
 	requests.push({ url: target, method, headers, body: init && init.body });
 	const reply = (payload) => Promise.resolve({ status: 200, json: () => Promise.resolve(payload) });
-	const envelope = (body) => ({ ok: true, snapshot: body, error: null, ageMs: 1000, intervalMs: 300000, capabilities: ["account", "diagnostics", "cpa", "reset", "credits", "refresh", "consume"] });
+		const envelope = (body) => ({ ok: true, snapshot: body, error: null, ageMs: 1000, intervalMs: 300000, capabilities: ["account", "diagnostics", "cpa", "reset", "credits", "refresh", "consume"], ...(consumeWarning === null ? {} : { warning: consumeWarning }) });
 
 	if (target.startsWith("/api/cpa-monitor/account")) {
 		const patch = JSON.parse(init.body);
@@ -880,6 +883,26 @@ check(
 	JSON.stringify(consumeBody)
 );
 check("the panel reports the spend", creditCard.textContent.includes(exports.zh["credits.used"]), creditCard.textContent.slice(0, 200));
+// The spend is irreversible, so a follow-up leg that failed has to be visible: the
+// reader must not be left thinking there is nothing else to do.
+consumeWarning = "重置券已使用，但清空本地冷却失败：boom。请点「清空本地冷却」重试。";
+await act(async () => {
+	cardButton(creditCard, exports.zh["credits.use"]).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	await Promise.resolve();
+});
+await act(async () => {
+	cardButton(creditCard, exports.zh["credits.useYes"]).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	await Promise.resolve();
+});
+await act(async () => {
+	await new Promise((resolve) => setTimeout(resolve, 0));
+});
+check(
+	"a half-done spend is shown, not swallowed",
+	window.document.body.querySelector(".cps_writeWarn")?.textContent.includes("清空本地冷却失败"),
+	window.document.body.querySelector(".cps_writeWarn")?.textContent
+);
+consumeWarning = null;
 
 const beforeClear = requests.length;
 await act(async () => {
