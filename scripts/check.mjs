@@ -11,7 +11,7 @@
  *   node scripts/check.mjs
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -229,6 +229,130 @@ if (shellFound === undefined) {
 	notes.push(`  note  shell bundle absent (looked in ${shellRoots.join(", ")}); the client icon check will skip`);
 } else {
 	notes.push(`  ok    installed shell assets found (for the icon check)`);
+}
+//#endregion
+
+//#region design tokens
+// The panel asks the shell for design tokens by name, and an undefined one kills its
+// whole declaration silently: `background: var(--undefined)` painted nothing, so the
+// danger button shipped as white text on an invisible fill. Every token this plugin
+// names in a `var()` *primary* position must exist in the theme the shell ships;
+// tokens that only appear in fallback position are deliberate cross-generation shims
+// (0.1 used `label-error` / `fill-l1`, 0.2 defines `state-error-primary` instead).
+/** Read one file out of an Electron asar archive, dependency-free. */
+function readFromAsar(asarPath, innerPath) {
+	let fd;
+	try {
+		fd = openSync(asarPath, "r");
+		// [u32 4][u32 headerPickleSize][u32 jsonLength][json...][file contents...]
+		const head = Buffer.alloc(16);
+		readSync(fd, head, 0, 16, 0);
+		const headerPickleSize = head.readUInt32LE(4);
+		const jsonLength = head.readUInt32LE(12);
+		if (!(jsonLength > 0 && jsonLength < 64 * 1024 * 1024)) return null;
+		const json = Buffer.alloc(jsonLength);
+		readSync(fd, json, 0, json.length, 16);
+		let node = JSON.parse(json.toString("utf8"));
+		for (const part of innerPath.split("/")) {
+			node = node?.files?.[part];
+			if (node === undefined) return null;
+		}
+		if (typeof node?.offset !== "string") return null;
+		const contents = Buffer.alloc(Number(node.size));
+		readSync(fd, contents, 0, contents.length, 8 + headerPickleSize + Number(node.offset));
+		return contents.toString("utf8");
+	} catch {
+		return null;
+	} finally {
+		if (fd !== undefined) closeSync(fd);
+	}
+}
+// Read the file here rather than reusing a later binding: this region runs before
+// that one is initialised, and a TDZ throw would take the whole suite down.
+const styledSource = readFileSync(join(packageDir, "lib", "client.js"), "utf8");
+const themeEntry = "lib/client.js";
+const themeInnerPaths = [
+	`dsh/node_modules/@deepseek-ai/dsh-client-ui-theme/${themeEntry}`,
+	`node_modules/@deepseek-ai/dsh-client-ui-theme/${themeEntry}`
+];
+const themeAsar = "/Applications/DeepSeek Harness.app/Contents/Resources/app.asar";
+const themeOverride = process.env.DSH_WEB_THEME;
+let themeSource = themeOverride !== undefined && existsSync(themeOverride) ? readFileSync(themeOverride, "utf8") : null;
+let themeOrigin = themeOverride ?? "";
+if (themeSource === null && existsSync(themeAsar)) {
+	for (const inner of themeInnerPaths) {
+		const text = readFromAsar(themeAsar, inner);
+		if (text !== null) {
+			themeSource = text;
+			themeOrigin = `${themeAsar}!${inner}`;
+			break;
+		}
+	}
+}
+if (themeSource === null) {
+	notes.push(`  note  shell theme not found (looked in DSH_WEB_THEME and ${themeAsar}); the design-token check needs a host install`);
+} else {
+	const definedTokens = new Set([...themeSource.matchAll(/--dsw-[a-z0-9-]+(?=:)/g)].map((match) => match[0]));
+	/**
+	 * Tokens that would break their declaration: a `var()` with no fallback whose token
+	 * the shell does not define resolves to nothing, which is how the danger button lost
+	 * its background. A `var()` that carries a fallback cannot break, so the 0.1-era names
+	 * this plugin keeps as shims are deliberately not flagged.
+	 */
+	const breakingTokens = (source) => {
+		const tokens = new Set();
+		const pattern = /var\(/g;
+		let call;
+		while ((call = pattern.exec(source)) !== null) {
+			let depth = 0;
+			let end = -1;
+			// Start after the `(` of this `var(` so its own paren is not counted.
+			for (let index = call.index + 4; index < source.length; index += 1) {
+				if (source[index] === "(") depth += 1;
+				else if (source[index] === ")") {
+					if (depth === 0) {
+						end = index;
+						break;
+					}
+					depth -= 1;
+				}
+			}
+			if (end === -1) continue;
+			const body = source.slice(call.index + 4, end);
+			let nested = 0;
+			let comma = -1;
+			for (let index = 0; index < body.length; index += 1) {
+				if (body[index] === "(") nested += 1;
+				else if (body[index] === ")") nested -= 1;
+				else if (body[index] === "," && nested === 0) {
+					comma = index;
+					break;
+				}
+			}
+			const token = body.slice(0, comma === -1 ? body.length : comma).trim();
+			const fallback = comma === -1 ? "" : body.slice(comma + 1).trim();
+			if (/^--dsw-/.test(token) && fallback === "" && !definedTokens.has(token)) tokens.add(token);
+		}
+		return [...tokens].sort();
+	};
+	const unsafeTokens = breakingTokens(styledSource);
+	const allTokens = new Set([...styledSource.matchAll(/--dsw-[a-z0-9-]+/g)].map((match) => match[0]));
+	check(
+		"every design token used without a fallback is defined by the installed shell",
+		unsafeTokens.length === 0,
+		unsafeTokens.join(", ")
+	);
+	notes.push(
+		`  note  ${String(allTokens.size)} design tokens used, ${String(definedTokens.size)} defined by the shell, 0 unguarded misses`
+	);
+	// The one that actually shipped broken: a destructive button must take its colour
+	// from the state token the shell defines, not from the 0.1 name it dropped.
+	const dangerRule = /\.cps_setBtnDanger\{([^}]*)\}/.exec(styledSource);
+	check(
+		"the destructive button colours itself with the state-error token",
+		dangerRule !== null && dangerRule[1].includes("--dsw-alias-state-error-primary"),
+		dangerRule === null ? "no .cps_setBtnDanger rule" : dangerRule[1].slice(0, 120)
+	);
 }
 //#endregion
 
