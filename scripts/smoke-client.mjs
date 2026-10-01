@@ -181,7 +181,7 @@ window.fetch = (url, init) => {
 	const headers = (init && init.headers) || {};
 	requests.push({ url: target, method, headers, body: init && init.body });
 	const reply = (payload) => Promise.resolve({ status: 200, json: () => Promise.resolve(payload) });
-	const envelope = (body) => ({ ok: true, snapshot: body, error: null, ageMs: 1000, intervalMs: 300000, capabilities: ["account", "diagnostics", "cpa", "reset", "credits", "refresh"] });
+	const envelope = (body) => ({ ok: true, snapshot: body, error: null, ageMs: 1000, intervalMs: 300000, capabilities: ["account", "diagnostics", "cpa", "reset", "credits", "refresh", "consume"] });
 
 	if (target.startsWith("/api/cpa-monitor/account")) {
 		const patch = JSON.parse(init.body);
@@ -847,13 +847,48 @@ check(
 	creditCard.querySelector(".cps_cardCooldown")?.textContent
 );
 
+// Spending a credit is the irreversible one: no write on the first click, exactly
+// one on the confirmation, and the count is re-read afterwards.
+const beforeConsume = requests.length;
+await act(async () => {
+	cardButton(creditCard, exports.zh["credits.use"]).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	await Promise.resolve();
+});
+check(
+	"asking to use a credit writes nothing yet",
+	accountWrites(beforeConsume).length === 0 && cardButton(creditCard, exports.zh["credits.useYes"]) !== undefined,
+	creditCard.textContent.slice(0, 200)
+);
+check(
+	"the confirmation says it cannot be undone",
+	creditCard.querySelector(".cps_creditPanel")?.textContent.includes("不可撤销"),
+	creditCard.querySelector(".cps_creditPanel")?.textContent?.slice(0, 240)
+);
+await act(async () => {
+	cardButton(creditCard, exports.zh["credits.useYes"]).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	await Promise.resolve();
+});
+await act(async () => {
+	await new Promise((resolve) => setTimeout(resolve, 0));
+});
+const consumeWrites = accountWrites(beforeConsume);
+const consumeBody = JSON.parse(consumeWrites[0]?.body ?? "{}");
+check("confirming spends exactly one credit", consumeWrites.length === 1, JSON.stringify(consumeWrites.map((entry) => entry.body)));
+check(
+	"the spend asks for the consume action on that account",
+	consumeBody.action === "consume" && consumeBody.authIndex === snapshot.accounts[0].authIndex,
+	JSON.stringify(consumeBody)
+);
+check("the panel reports the spend", creditCard.textContent.includes(exports.zh["credits.used"]), creditCard.textContent.slice(0, 200));
+
+const beforeClear = requests.length;
 await act(async () => {
 	cardButton(creditCard, exports.zh["cooldown.action"]).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 	await Promise.resolve();
 });
 check(
 	"the first click only asks for confirmation",
-	accountWrites(beforeCredits).length === 0 && cardButton(creditCard, exports.zh["cooldown.confirmYes"]) !== undefined && creditCard.textContent.includes("不消耗重置券"),
+	accountWrites(beforeClear).length === 0 && cardButton(creditCard, exports.zh["cooldown.confirmYes"]) !== undefined && creditCard.textContent.includes("不消耗重置券"),
 	creditCard.textContent.slice(0, 200)
 );
 await act(async () => {
@@ -862,7 +897,7 @@ await act(async () => {
 });
 check(
 	"cancelling backs out without spending a credit",
-	accountWrites(beforeCredits).length === 0 && cardButton(creditCard, exports.zh["cooldown.confirmYes"]) === undefined,
+	accountWrites(beforeClear).length === 0 && cardButton(creditCard, exports.zh["cooldown.confirmYes"]) === undefined,
 	creditCard.textContent.slice(0, 200)
 );
 
@@ -870,6 +905,8 @@ await act(async () => {
 	cardButton(creditCard, exports.zh["cooldown.action"]).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 	await Promise.resolve();
 });
+
+
 const beforeReset = requests.length;
 // Upstream now reports the credit as spent; the panel must pick that up by itself.
 creditsAvailable = 0;

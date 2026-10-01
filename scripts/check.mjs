@@ -18,7 +18,7 @@ import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { readEffectiveConfig } from "./patch-config.mjs";
 import { Config, plainEntryConfig, resolveRuntimeConfig } from "../lib/index.js";
-import { fetchResetCredits, listErrorLogs, managementSurface, parseErrorLog, refreshCredential, resetCooldown } from "../lib/cpa.js";
+import { consumeResetCredit, fetchResetCredits, listErrorLogs, managementSurface, parseErrorLog, refreshCredential, resetCooldown } from "../lib/cpa.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageDir = join(here, "..");
@@ -450,6 +450,72 @@ try {
 	v0Refresh = error instanceof Error ? error.message : String(error);
 }
 check("a v0 deployment refuses the refresh instead of guessing a route", v0Refresh !== null && v0Refresh.includes("v8"), String(v0Refresh));
+
+// Spending a credit goes straight to the subscription API through api-call: CPA's
+// management API has no route for it at all.
+const consumeCalls = [];
+const consumeTransport = {
+	request: async (url, init) => {
+		consumeCalls.push({ url, body: init.body === undefined ? undefined : JSON.parse(init.body) });
+		return url.includes("quota/providers")
+			? { status: 200, body: "{}", headers: {} }
+			: { status: 200, body: JSON.stringify({ status_code: 200, body: "{}" }), headers: {} };
+	}
+};
+await consumeResetCredit({ request: consumeTransport.request, managementSurface: undefined }, base, { authIndex: "a1", accountId: "acc" });
+const consumeCall = consumeCalls.at(-1);
+check(
+	"the spend posts the consume URL upstream rather than a management route",
+	consumeCall?.url === "https://cpa.example.com:8317/v8/management/requests/api-call" &&
+		consumeCall?.body.method === "POST" &&
+		consumeCall?.body.url === "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume",
+	JSON.stringify({ url: consumeCall?.url, method: consumeCall?.body?.method, upstream: consumeCall?.body?.url })
+);
+const redeemBody = JSON.parse(consumeCall?.body.data ?? "{}");
+check(
+	"the spend carries a fresh redemption id",
+	typeof redeemBody.redeem_request_id === "string" && redeemBody.redeem_request_id.length >= 16,
+	JSON.stringify(redeemBody)
+);
+check(
+	"the spend signs the call with the credential's own token",
+	consumeCall?.body.header?.Authorization === "Bearer $TOKEN$" && consumeCall?.body.header?.["ChatGPT-Account-Id"] === "acc",
+	JSON.stringify(consumeCall?.body.header)
+);
+let consumeRefusal = null;
+try {
+	await consumeResetCredit(
+		{ request: async () => ({ status: 200, body: JSON.stringify({ status_code: 409, body: "{\"error\":\"already_redeemed\"}" }) }), managementSurface: { id: "v8" } },
+		base,
+		{ authIndex: "a1", accountId: "" }
+	);
+} catch (error) {
+	consumeRefusal = error instanceof Error ? error.message : String(error);
+}
+check(
+	"a refused redemption surfaces instead of looking like success",
+	consumeRefusal !== null && consumeRefusal.includes("409"),
+	String(consumeRefusal)
+);
+// One redemption per confirmation, and only from that confirmation.
+const consumeCallsInServer = resetIndexSource.split("\n").filter((line) => line.includes("await consumeResetCredit(")).length;
+const consumeMarker = resetIndexSource.split("\n").findIndex((line) => line.includes('body.action === "consume"'));
+const consumeCallLine = resetIndexSource.split("\n").findIndex((line) => line.includes("await consumeResetCredit("));
+check("the spend is performed from exactly one place", consumeCallsInServer === 1, String(consumeCallsInServer));
+check(
+	"that place is the confirmation-guarded write route",
+	consumeMarker !== -1 && consumeCallLine > consumeMarker && consumeCallLine - consumeMarker < 14,
+	`marker=${String(consumeMarker)} call=${String(consumeCallLine)}`
+);
+check(
+	"a landed redemption drops the cached credit count",
+	consumeMarker !== -1 &&
+		resetIndexSource
+			.split("\n")
+			.slice(consumeMarker, consumeMarker + 16)
+			.some((line) => line.includes("creditsCache.delete(")),
+	"the consume branch must invalidate the credits cache"
+);
 
 // The credits read parses the upstream payload, which spells its keys either way.
 const creditsTransport = {

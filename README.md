@@ -173,9 +173,25 @@ schema 默认值  →  组合层（本包 cordis.patch.yml）  →  用户层
 
 **先说一件被纠正过的事。** 这个功能最初是照「`POST /v8/management/routing/cooldown/reset` 会消耗一张重置券」实现的；读了 CPA 源码（`sdk/cliproxy/auth/conductor_cooldown.go` 的 `Manager.ResetQuota`）后确认**并非如此**：它只清本地字段——遍历 `auth.ModelStates` 调 `resetModelState`、用 `clearCooldownStateForAuth` 清掉 `Unavailable`/`NextRetryAfter`/`Quota.Exceeded`/`NextRecoverAt`/`LastError` 并把状态改回 active，再重投影模型——**函数体里没有任何 http/上游调用，也没有 redeem/credit 钩子**，所以它是免费的、只影响本地路由状态。
 
-真正「花掉」重置券的是走**配额提供方**的 `POST /v8/management/credentials/quota/reset`（`ResetCredentialQuota`，需要注册 provider）；本部署的 `GET /credentials/quota/providers` 返回 `{"providers":[]}`，那条路会 501，所以插件没有接它——兑换重置券请去 CPA 自己的界面，或先装上提供方插件。
+**那重置券到底怎么花？** 管理 API 里没有这条路：另一条 `POST /v8/management/credentials/quota/reset`（`ResetCredentialQuota`）要注册**配额提供方**，`providers` 为空的部署会 501。真正的兑换是**直连上游**的一次 POST，借 CPA 的 `api-call` 用该凭据的 token 转发出去——这一点是读官方管理面板 `Cli-Proxy-API-Management-Center` 的 `consumeCodexRateLimitResetCredit` 确认的：
 
-于是面板里的动作被正名为 **「清空本地冷却」**，并保留一次确认（这条路径改的是路由状态，误点会让 CPA 立刻重试一个还在限流的上游）：
+```
+POST https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume
+body:    {"redeem_request_id": "<uuid>"}          # 每次新生成，上游拒绝复用
+headers: Authorization: Bearer $TOKEN$
+         Content-Type: application/json
+         User-Agent: codex-tui/0.149.1 (…)       # 上游认这个 UA
+         ChatGPT-Account-Id: <account_id>         # 能取到时
+```
+
+所以面板里是**两个不同的动作**，各自独立确认：
+
+| 动作 | 打给谁 | 代价 |
+|---|---|---|
+| **清空本地冷却** | `POST /v8/management/routing/cooldown/reset` | 免费，只改 CPA 本地路由状态 |
+| **使用重置券** | 上游 `…/rate-limit-reset-credits/consume` | **不可撤销地花掉 1 张券**，立刻重置该账号 5h/7d 限额 |
+
+两者都保留一次二次确认（第一条：误点会让 CPA 立刻重试一个仍在限流的上游；第二条：花掉的券要不回来）：
 
 - 插件**任何**自动路径都不会调用它：不轮询、不重试、不在刷新时顺手调用；`resetCooldown` 在整个仓库里只有一个调用点，就是那条带动作头、只接受 loopback 与 `POST` 的写路由，`npm run check` 里有一条断言钉住这一点。
 - 打开面板、点 `重置`、点 `取消` 都**不发任何写请求**（客户端套件里各有断言）。
@@ -279,11 +295,11 @@ CPA 8 引入了 `/v8/management`，并把它自己的 `/v0/management` 标注为
 | `GET /api/cpa-monitor/diagnostics` | 失败请求诊断：列出 `request-error-logs`（含从文件名解析出的端点与时间戳） |
 | `GET /api/cpa-monitor/diagnostics?file=<name>` | 读某一篇并解析出归属账号、模型、重试次数、上游状态与错误码/文案 |
 | `GET /api/cpa-monitor/credits?authIndex=<id>` | 该账号的重置券明细与到期时间（按需读取，结果缓存 60 秒） |
-| `POST /api/cpa-monitor/account` | 凭据写操作：`{action:"status", authIndex, disabled}` 开关账号；`{action:"fields", authIndex, note?, priority?}` 改备注/优先级；`{action:"reset", authIndex}` 清空该账号在 CPA 上的**本地**冷却状态（只改本地路由状态，不消耗重置券；只由面板的二次确认发起）；`{action:"refresh", authIndex}` 刷新该账号的 OAuth 令牌（仅 v8） |
+| `POST /api/cpa-monitor/account` | 凭据写操作：`{action:"status", authIndex, disabled}` 开关账号；`{action:"fields", authIndex, note?, priority?}` 改备注/优先级；`{action:"reset", authIndex}` 清空该账号在 CPA 上的**本地**冷却状态（只改本地路由状态，不消耗重置券）；`{action:"consume", authIndex}` **使用 1 张重置券**（直连上游兑换，不可撤销）。两者都只由面板自己的二次确认发起；`{action:"refresh", authIndex}` 刷新该账号的 OAuth 令牌（仅 v8） |
 
 所有路由都只接受 loopback 对端；**强制刷新与所有凭据写操作**还必须带 `x-dsh-cpa-monitor-action` 请求头（跨站页面能打 localhost，但带不上自定义头，preflight 会失败）。写操作只接受 `POST`。
 
-快照载荷里还有一个 `capabilities` 数组（当前是 `["account","diagnostics","cpa","reset","credits","refresh"]`）。这是给**热重载错配**用的：`lib/client.js` 由 HMR 即时生效，`lib/index.js` 只有重启 `dsh web` 才会换，所以「浏览器这半新、服务端那半旧」是正常状态。客户端按这份声明决定渲染哪些控件——声明缺失（旧服务端）时，面板会显示一条「服务端 half 是旧版，请重启 dsh web」，并隐藏账号开关/编辑/诊断/版本 chip，而不是让你点了之后拿到一句看不懂的错。
+快照载荷里还有一个 `capabilities` 数组（当前是 `["account","diagnostics","cpa","reset","credits","refresh","consume"]`）。这是给**热重载错配**用的：`lib/client.js` 由 HMR 即时生效，`lib/index.js` 只有重启 `dsh web` 才会换，所以「浏览器这半新、服务端那半旧」是正常状态。客户端按这份声明决定渲染哪些控件——声明缺失（旧服务端）时，面板会显示一条「服务端 half 是旧版，请重启 dsh web」，并隐藏账号开关/编辑/诊断/版本 chip，而不是让你点了之后拿到一句看不懂的错。
 
 ---
 
