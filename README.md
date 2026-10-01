@@ -167,15 +167,20 @@ schema 默认值  →  组合层（本包 cordis.patch.yml）  →  用户层
 
 写操作的三条约束：浏览器**只传 `authIndex`**，服务端从快照解析出凭据文件名再去写（浏览器没有机会指名任意文件）；`disabled` 必须是布尔、`priority` 必须是数字；被拒绝的请求不会打到 CPA（测试里断言了这一点）。
 
-### 重置券（会消耗额度，谨慎）
+### 重置券与本地冷却
 
-卡片底部那行 `重置券 N` 是一个**链接**，不是纯文本：点开在卡片内就地展开一小块面板，显示可用张数与每张的到期时间，再给一个 `重置` 按钮。点 `重置` **不会**直接执行——它先变成一行确认（「确认重置？这会消耗 1 张重置券，且无法撤销。」），只有再点 `确认重置` 才会发请求。
+卡片底部那行 `重置券 N`（没有券但有冷却时显示为「本地冷却」）是一个**链接**，点开在卡片内就地展开：可用重置券的张数与每张到期时间（**只读展示**），以及该账号当前的**本地冷却**条目——CPA 收到上游 429 后自己记的那份状态。
 
-这么设计是因为 `POST /v8/management/routing/cooldown/reset`（旧的 v0 是 `POST /reset-quota`）**每调用一次就烧掉一张 `rate_limit_reset_credits`**，而重置券是稀缺且**会过期**的资源。所以：
+**先说一件被纠正过的事。** 这个功能最初是照「`POST /v8/management/routing/cooldown/reset` 会消耗一张重置券」实现的；读了 CPA 源码（`sdk/cliproxy/auth/conductor_cooldown.go` 的 `Manager.ResetQuota`）后确认**并非如此**：它只清本地字段——遍历 `auth.ModelStates` 调 `resetModelState`、用 `clearCooldownStateForAuth` 清掉 `Unavailable`/`NextRetryAfter`/`Quota.Exceeded`/`NextRecoverAt`/`LastError` 并把状态改回 active，再重投影模型——**函数体里没有任何 http/上游调用，也没有 redeem/credit 钩子**，所以它是免费的、只影响本地路由状态。
+
+真正「花掉」重置券的是走**配额提供方**的 `POST /v8/management/credentials/quota/reset`（`ResetCredentialQuota`，需要注册 provider）；本部署的 `GET /credentials/quota/providers` 返回 `{"providers":[]}`，那条路会 501，所以插件没有接它——兑换重置券请去 CPA 自己的界面，或先装上提供方插件。
+
+于是面板里的动作被正名为 **「清空本地冷却」**，并保留一次确认（这条路径改的是路由状态，误点会让 CPA 立刻重试一个还在限流的上游）：
 
 - 插件**任何**自动路径都不会调用它：不轮询、不重试、不在刷新时顺手调用；`resetCooldown` 在整个仓库里只有一个调用点，就是那条带动作头、只接受 loopback 与 `POST` 的写路由，`npm run check` 里有一条断言钉住这一点。
 - 打开面板、点 `重置`、点 `取消` 都**不发任何写请求**（客户端套件里各有断言）。
 - **重置成功后立刻重读用量与重置券**：服务端先把这次写入折回快照（`refresh({force: true})`，是重新观测而不是读缓存），并**立即失效**那条凭据的重置券缓存；客户端拿到结果后再主动重读一次明细。因此在数字更新完成前，「重置」按钮一直是禁用状态——陈旧数字不会成为第二次消费的依据。
+- **本地冷却的来源**是凭据列表（`GET /v8/management/credentials`）里的 `cooldowns[]` 与 `next_retry_after`：每条带 `scope`（`credential` / `model`）、`reason`、`retry_at`、`remaining_seconds`、`model_key`、`http_status`（429）、`backoff_level`。卡片上直接显示一行（`本地冷却 · 模型 gpt-5.6-terra 至 10/03 17:10；…`），面板里逐条列出。这是**路由状态**，与上游额度是两回事，也只出现在 v8（v0 的 `auth-files` 不返回 `cooldowns`）。
 - **到期时间不在使用量接口里**（实测：那份 `rate_limit_reset_credits` 只有 `{available_count, applicable_available_count}`），而在上游一个**独立**的只读接口上：
 
   ```
@@ -274,7 +279,7 @@ CPA 8 引入了 `/v8/management`，并把它自己的 `/v0/management` 标注为
 | `GET /api/cpa-monitor/diagnostics` | 失败请求诊断：列出 `request-error-logs`（含从文件名解析出的端点与时间戳） |
 | `GET /api/cpa-monitor/diagnostics?file=<name>` | 读某一篇并解析出归属账号、模型、重试次数、上游状态与错误码/文案 |
 | `GET /api/cpa-monitor/credits?authIndex=<id>` | 该账号的重置券明细与到期时间（按需读取，结果缓存 60 秒） |
-| `POST /api/cpa-monitor/account` | 凭据写操作：`{action:"status", authIndex, disabled}` 开关账号；`{action:"fields", authIndex, note?, priority?}` 改备注/优先级；`{action:"reset", authIndex}` 重置该账号的配额与冷却（**消耗 1 张重置券**，只由面板的二次确认发起）；`{action:"refresh", authIndex}` 刷新该账号的 OAuth 令牌（仅 v8） |
+| `POST /api/cpa-monitor/account` | 凭据写操作：`{action:"status", authIndex, disabled}` 开关账号；`{action:"fields", authIndex, note?, priority?}` 改备注/优先级；`{action:"reset", authIndex}` 清空该账号在 CPA 上的**本地**冷却状态（只改本地路由状态，不消耗重置券；只由面板的二次确认发起）；`{action:"refresh", authIndex}` 刷新该账号的 OAuth 令牌（仅 v8） |
 
 所有路由都只接受 loopback 对端；**强制刷新与所有凭据写操作**还必须带 `x-dsh-cpa-monitor-action` 请求头（跨站页面能打 localhost，但带不上自定义头，preflight 会失败）。写操作只接受 `POST`。
 

@@ -190,6 +190,27 @@
         "overageLimitReached": false
       },
       "resetCredits": 1,
+      "cooldowns": [
+        {
+          "scope": "credential",
+          "reason": "credential_quota",
+          "modelKey": null,
+          "retryAt": 1791047459000,
+          "remainingSeconds": 284634,
+          "httpStatus": null,
+          "backoffLevel": null
+        },
+        {
+          "scope": "model",
+          "reason": "quota",
+          "modelKey": "gpt-5.6-terra",
+          "retryAt": 1791047459000,
+          "remainingSeconds": 284634,
+          "httpStatus": 429,
+          "backoffLevel": 0
+        }
+      ],
+      "nextRetryAfter": 1791076259000,
       "error": null
     },
     {

@@ -190,6 +190,8 @@ window.fetch = (url, init) => {
 			accounts: snapshot.accounts.map((account) => {
 				if (account.authIndex !== patch.authIndex) return account;
 				if (patch.action === "status") return { ...account, disabled: patch.disabled };
+				// Clearing the local cooldown is what CPA reports back: the entries go away.
+				if (patch.action === "reset") return { ...account, cooldowns: [], nextRetryAfter: null };
 				return { ...account, note: patch.note ?? account.note, priority: patch.priority ?? account.priority };
 			})
 		};
@@ -820,7 +822,16 @@ check(
 	JSON.stringify(requests.slice(beforeCredits).map((entry) => entry.url))
 );
 check("the panel is expanded once opened", creditCard.querySelector(".cps_creditLink")?.getAttribute("aria-expanded") === "true");
-check("the panel states what a reset costs", creditPanel?.textContent.includes("消耗 1 张重置券"), creditPanel?.textContent?.slice(0, 160));
+check(
+	"the panel names the local cooldown it can clear",
+	creditPanel?.textContent.includes(exports.zh["cooldown.title"]) && creditPanel?.textContent.includes("gpt-5.6-terra"),
+	creditPanel?.textContent?.slice(0, 200)
+);
+check(
+	"the panel is explicit that clearing spends no credit",
+	creditPanel?.textContent.includes("不消耗重置券"),
+	creditPanel?.textContent?.slice(0, 240)
+);
 check(
 	"the panel shows each credit's expiry from the credits endpoint",
 	creditPanel?.textContent.includes("Full reset (Weekly + 5 hr)") &&
@@ -829,36 +840,41 @@ check(
 	creditPanel?.textContent?.slice(0, 200)
 );
 check("a redeemed credit says when it was used", creditPanel?.textContent.includes("已于 "), creditPanel?.textContent?.slice(0, 200));
-check("the panel offers the reset", cardButton(creditCard, "重置") !== undefined, creditPanel?.textContent?.slice(0, 160));
+check("the panel offers the clear", cardButton(creditCard, exports.zh["cooldown.action"]) !== undefined, creditPanel?.textContent?.slice(0, 200));
+check(
+	"the card shows the cooldown without opening the panel",
+	creditCard.querySelector(".cps_cardCooldown")?.textContent.includes("gpt-5.6-terra"),
+	creditCard.querySelector(".cps_cardCooldown")?.textContent
+);
 
 await act(async () => {
-	cardButton(creditCard, "重置").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	cardButton(creditCard, exports.zh["cooldown.action"]).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 	await Promise.resolve();
 });
 check(
 	"the first click only asks for confirmation",
-	accountWrites(beforeCredits).length === 0 && cardButton(creditCard, "确认重置") !== undefined && creditCard.textContent.includes("确认重置？"),
+	accountWrites(beforeCredits).length === 0 && cardButton(creditCard, exports.zh["cooldown.confirmYes"]) !== undefined && creditCard.textContent.includes("不消耗重置券"),
 	creditCard.textContent.slice(0, 200)
 );
 await act(async () => {
-	cardButton(creditCard, "取消").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	cardButton(creditCard, exports.zh["cooldown.cancel"]).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 	await Promise.resolve();
 });
 check(
 	"cancelling backs out without spending a credit",
-	accountWrites(beforeCredits).length === 0 && cardButton(creditCard, "确认重置") === undefined,
+	accountWrites(beforeCredits).length === 0 && cardButton(creditCard, exports.zh["cooldown.confirmYes"]) === undefined,
 	creditCard.textContent.slice(0, 200)
 );
 
 await act(async () => {
-	cardButton(creditCard, "重置").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	cardButton(creditCard, exports.zh["cooldown.action"]).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 	await Promise.resolve();
 });
 const beforeReset = requests.length;
 // Upstream now reports the credit as spent; the panel must pick that up by itself.
 creditsAvailable = 0;
 await act(async () => {
-	cardButton(creditCard, "确认重置").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+	cardButton(creditCard, exports.zh["cooldown.confirmYes"]).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 	await Promise.resolve();
 });
 await act(async () => {
@@ -866,9 +882,15 @@ await act(async () => {
 });
 const resetRequests = requests.slice(beforeReset).filter((entry) => entry.url.startsWith("/api/cpa-monitor/account"));
 const resetBody = JSON.parse(resetRequests[0]?.body ?? "{}");
-check("the confirmed click posts exactly one reset", resetRequests.length === 1, JSON.stringify(requests.slice(beforeReset).map((entry) => entry.url)));
+// The clear landing is what removes the cooldown from the card.
 check(
-	"the reset asks for the reset action on that account",
+	"clearing the cooldown drops it from the card",
+	cardOf(snapshot.accounts[0].email)?.querySelector(".cps_cardCooldown") === null,
+	cardOf(snapshot.accounts[0].email)?.querySelector(".cps_cardCooldown")?.textContent
+);
+check("the confirmed click posts exactly one action", resetRequests.length === 1, JSON.stringify(requests.slice(beforeReset).map((entry) => entry.url)));
+check(
+	"the clear asks for the reset action on that account",
 	resetBody.action === "reset" && resetBody.authIndex === snapshot.accounts[0].authIndex,
 	JSON.stringify(resetBody)
 );
@@ -880,19 +902,19 @@ check(
 // Spending a credit is irreversible, so the panel must re-read the count rather
 // than keep showing the number it had while the click was being confirmed.
 check(
-	"a landed reset re-reads the credits instead of trusting the old count",
+	"the action re-reads the credits instead of trusting the old count",
 	requests.slice(beforeReset).filter((entry) => entry.url.startsWith("/api/cpa-monitor/credits")).length === 1,
 	JSON.stringify(requests.slice(beforeReset).map((entry) => entry.url))
 );
 check(
-	"the panel then shows the post-spend count",
+	"the panel then shows the freshly read count",
 	creditCard.querySelector(".cps_creditPanel")?.textContent.includes("可用 0 张"),
 	creditCard.querySelector(".cps_creditPanel")?.textContent?.slice(0, 160)
 );
 check(
-	"an account with nothing left cannot be reset again",
-	cardButton(creditCard, "重置")?.disabled === true,
-	`disabled=${String(cardButton(creditCard, "重置")?.disabled)}`
+	"with nothing left to clear, the control is disabled",
+	cardButton(creditCard, exports.zh["cooldown.action"])?.disabled === true,
+	`disabled=${String(cardButton(creditCard, exports.zh["cooldown.action"])?.disabled)}`
 );
 
 // OAuth refresh, offered from the account editor and only where the route exists.
@@ -907,7 +929,7 @@ check(
 	"the refresh shares the row with the editor's own actions",
 	editorRow !== null &&
 		editorRow !== undefined &&
-		editorRow === cardButton(creditCard, "取消")?.parentElement &&
+		editorRow === cardButton(creditCard, exports.zh["cooldown.cancel"])?.parentElement &&
 		editorRow === cardButton(creditCard, "保存")?.parentElement,
 	editorRow?.className
 );
