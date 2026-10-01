@@ -1,6 +1,6 @@
 {
   "name": "dsh-cpa-monitor",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "DSH web plugin: a CLIProxyAPI (CPA) Codex account monitor — sidebar quota badge (5h/7d), account enable/disable and note/priority editing, failure diagnostics from CPA error logs, and a Settings card for the endpoint and proxies",
   "keywords": [
     "deepseek-harness",
