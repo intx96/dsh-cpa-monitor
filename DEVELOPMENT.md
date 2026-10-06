@@ -48,6 +48,8 @@ dsh plugin --profile web add /path/to/dsh-cpa-monitor
 
 `pnpm add <目录>` 生成 `link:` 软链接，链接后的插件仍可从自身真实路径解析依赖（软链接保留真实路径，Node 自仓库侧向上查找 `node_modules`），因此仓库内的 `npm install` 不可省略。
 
+桌面 App 的 profile（`--profile desktop`）同样支持上述命令，但有两项约束：该 profile 必须已被 App 初始化（至少启动过一次），且命令会对其 `package.json` 加文件锁，因此**必须先完全退出 App** 再执行。App 的「插件」页提供等价的图形化安装入口，改动在下次启动时生效。
+
 | 修改对象 | 生效方式 |
 |---|---|
 | `lib/client.js` | 宿主轮询到 mtime/size 变化后热重载该插件，刷新页面即可 |

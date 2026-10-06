@@ -44,32 +44,64 @@
 
 - DSH 0.1 及以上版本（桌面 App 亦适用）。
 - 一个可访问的 CPA 管理口，以及其管理密钥。
-- Node.js 18 及以上（服务端半边仅使用 `node:` 内置模块）。
+- Node.js 20 及以上（服务端半边仅使用 `node:` 内置模块）。
 
 ## 安装
 
-从 npm 安装：
+包名为 `dsh-cpa-monitor`，已发布到 npm。安装方式按使用形态分为三类。
+
+### 方式一：桌面 App（图形化界面）
+
+适用于 DSH 0.2 及以上的桌面 App：
+
+1. 进入左侧栏的 **插件** 页；
+2. 点击 **添加插件**，在 **包名或地址** 中填入 `dsh-cpa-monitor`；
+3. 点击 **安装**。
+
+该入口同样接受 GitHub 仓库地址与本地目录路径（本地路径用于源码安装）。若需从私有 npm 源安装，可在同一处填写 **安装源**，登录凭据放在本机 `~/.npmrc`。
+
+安装完成后，插件改动**在下次启动 App 时生效**。卸载在同一页面的 **卸载** 操作中完成。
+
+### 方式二：命令行（`dsh web` 或其他 `dsh` 部署）
+
+需要一个可用的 `dsh` 命令。桌面 App 不向 `PATH` 暴露它；未安装时可从 npm 获取：
 
 ```bash
+npm install -g @deepseek-ai/dsh
 dsh plugin --profile web add dsh-cpa-monitor
 # 重启 dsh web；服务端半边在启动时挂载
 ```
 
-从源码安装（修改代码即时生效，参见开发文档中的热更新说明）：
+桌面 App 的 profile 亦可由命令行管理，但**必须先完全退出 App**（该命令会锁定 profile 目录，App 运行期间不要执行）：
 
 ```bash
-cd /path/to/dsh-cpa-monitor && npm install
-dsh plugin --profile web add /path/to/dsh-cpa-monitor
+dsh plugin --profile desktop add dsh-cpa-monitor
+# 重新打开 App
+```
+
+`dsh plugin add` 会调用 pnpm 完成安装（源码目录以 `link:` 软链接方式接入，不复制代码），并把插件追加到 profile 的 `dsh.profile.bundles`。若提示找不到 pnpm，需要先安装并使其位于 `PATH` 上。
+
+### 方式三：从源码安装
+
+```bash
+git clone https://github.com/intx96/dsh-cpa-monitor.git
+cd dsh-cpa-monitor && npm install
+dsh plugin --profile web add "$PWD"
 # 重启 dsh web
 ```
 
-`dsh plugin add` 使用 pnpm 建立软链接（`link:`，不复制代码），并将 `dsh-cpa-monitor` 追加到 profile 的 `dsh.profile.bundles`。重启后刷新浏览器即可。
+修改 `lib/client.js` 后由宿主热重载；修改服务端半边（`lib/index.js` 等）需要重启宿主。详见开发文档中的热更新说明。
 
-卸载：
+### 升级与卸载
+
+已安装的插件暂不支持自动更新，升级需先卸载再安装新版本：
 
 ```bash
 dsh plugin --profile web remove dsh-cpa-monitor
+dsh plugin --profile web add dsh-cpa-monitor@latest
 ```
+
+桌面 App 则在插件页先 **卸载**、再 **添加插件**（填入 `dsh-cpa-monitor` 即取最新版本）。
 
 安装完成后，需要填写 CPA 地址与密钥，方式见下一节。
 
