@@ -447,6 +447,34 @@ check(
 	badgeOf([accountFixture("free", [["30d", 12]])]) === "free:long",
 	badgeOf([accountFixture("free", [["30d", 12]])])
 );
+// Plans: a pro-or-above account takes the short window out of the colour decision.
+const poolWith = (plan, extra = {}) => ({ accounts: [accountFixture("p", [["5h", 0], ["7d", 100]], { plan, ...extra })] });
+check(
+	"planName reduces a plan to its bare name",
+	exports.planName({ plan: "ChatGPT Pro" }) === "pro" && exports.planName({ plan: "Plus" }) === "plus" && exports.planName({ plan: "pro-lite" }) === "pro" && exports.planName({}) === "",
+	JSON.stringify([exports.planName({ plan: "ChatGPT Pro" }), exports.planName({ plan: "Plus" }), exports.planName({ plan: "pro-lite" }), exports.planName({})])
+);
+check(
+	"hasHighPlan counts pro and above",
+	["pro", "team", "business", "enterprise", "ChatGPT Pro", "pro-lite"].every((plan) => exports.hasHighPlan(poolWith(plan)) === true),
+	JSON.stringify(["pro", "team", "business", "enterprise"].map((plan) => exports.hasHighPlan(poolWith(plan))))
+);
+check(
+	"hasHighPlan leaves plus and free alone",
+	["plus", "free", ""].every((plan) => exports.hasHighPlan(poolWith(plan)) === false),
+	JSON.stringify(["plus", "free", ""].map((plan) => exports.hasHighPlan(poolWith(plan))))
+);
+check(
+	"hasHighPlan ignores a disabled pro account",
+	exports.hasHighPlan({ accounts: [accountFixture("off", [["5h", 0], ["7d", 100]], { plan: "pro", disabled: true })] }) === false
+);
+check("badgeTone without a pro plan: the short window decides", exports.badgeTone({ "5h": 0, "7d": 104, "30d": null }, false) === "bad");
+check("badgeTone with a pro plan: a drained short window stays green", exports.badgeTone({ "5h": 0, "7d": 104, "30d": null }, true) === "ok", exports.badgeTone({ "5h": 0, "7d": 104, "30d": null }, true));
+check("badgeTone with a pro plan: the long window still warns", exports.badgeTone({ "5h": 90, "7d": 4, "30d": null }, true) === "bad");
+check("badgeTone with a pro plan: the tighter of 7d/30d decides", exports.badgeTone({ "5h": 100, "7d": 80, "30d": 12 }, true) === "warn");
+check("badgeTone with a pro plan and no long window stays neutral", exports.badgeTone({ "5h": 0, "7d": null, "30d": null }, true) === "muted");
+check("badgeTone with nothing to read stays neutral", exports.badgeTone({}, true) === "muted" && exports.badgeTone({}, false) === "muted");
+
 const form = (values) => exports.remainingText(values);
 check("the value is the 5h/7d pair when nothing reports 30d", form({ "5h": 100, "7d": 9, "30d": null }) === "100%/9%", form({ "5h": 100, "7d": 9, "30d": null }));
 check("a 30d window extends the format to three segments", form({ "5h": 100, "7d": 9, "30d": 65 }) === "100%/9%/65%", form({ "5h": 100, "7d": 9, "30d": 65 }));
@@ -1761,6 +1789,36 @@ if (shellBundles.length === 0) {
 	}
 	check("shell primitives export Tag", shell.includes("Tag:"), "the unsaved marker falls back to a plain span");
 }
+//#endregion
+
+//#region plan-aware badge colour (rendered)
+// The same drained 5h window must render green on a pro plan and red on plus; this
+// exercises the wiring (values -> hasHighPlan -> badgeTone -> class), not just the rule.
+const toneAccount = snapshot.accounts[0];
+const setWindow = (account, label, remaining) => {
+	for (const window of account.windows ?? []) if (window.label === label) window.remaining = remaining;
+	if (account.short?.label === label) account.short.remaining = remaining;
+	if (account.long?.label === label) account.long.remaining = remaining;
+};
+const savedPlan = toneAccount.plan;
+const badgeClassWith = async (plan) => {
+	toneAccount.plan = plan;
+	setWindow(toneAccount, "5h", 0);
+	setWindow(toneAccount, "7d", 104);
+	const rendered = await renderOpenPanelWith(exports);
+	const className = rendered.holder.querySelector(".cps_badgeAmount")?.className ?? "";
+	await act(async () => {
+		rendered.root.unmount();
+	});
+	return className;
+};
+const proBadge = await badgeClassWith("pro");
+check("a pro plan renders a drained short window without the warning colour", proBadge.includes("cps_ok"), proBadge);
+const plusBadge = await badgeClassWith("plus");
+check("the same figures on a plus plan render the warning colour", plusBadge.includes("cps_bad"), plusBadge);
+toneAccount.plan = savedPlan;
+setWindow(toneAccount, "5h", 96);
+setWindow(toneAccount, "7d", 8);
 //#endregion
 
 const failed = checks.filter((entry) => !entry.ok);
