@@ -456,7 +456,7 @@ check(
 );
 check(
 	"hasHighPlan counts pro and above",
-	["pro", "team", "business", "enterprise", "ChatGPT Pro", "pro-lite"].every((plan) => exports.hasHighPlan(poolWith(plan)) === true),
+	["pro", "prolite", "team", "business", "enterprise", "ChatGPT Pro", "pro-lite", "ProLite"].every((plan) => exports.hasHighPlan(poolWith(plan)) === true),
 	JSON.stringify(["pro", "team", "business", "enterprise"].map((plan) => exports.hasHighPlan(poolWith(plan))))
 );
 check(
@@ -467,6 +467,33 @@ check(
 check(
 	"hasHighPlan ignores a disabled pro account",
 	exports.hasHighPlan({ accounts: [accountFixture("off", [["5h", 0], ["7d", 100]], { plan: "pro", disabled: true })] }) === false
+);
+check(
+	"isHighPlanName accepts the vendor spellings of pro",
+	["pro", "prolite", "pro-lite", "promax", "team", "business", "enterprise"].every((name) => exports.isHighPlanName(name) === true) &&
+		["plus", "free", ""].every((name) => exports.isHighPlanName(name) === false),
+	JSON.stringify(["pro", "prolite", "pro-lite", "plus", "free"].map((name) => [name, exports.isHighPlanName(name)]))
+);
+// The deployment reports `prolite` (one word). This pool is that deployment's shape:
+// total mode over one plus account (5h 16 / 7d 18) and one prolite account (7d 69),
+// which used to paint 16%/87% orange because the 5h reading won the minimum.
+const livePool = {
+	accounts: [
+		accountFixture("plus", [["5h", 16], ["7d", 18]], { plan: "plus" }),
+		accountFixture("prolite", [["7d", 69]], { plan: "prolite" }),
+		accountFixture("free", [["30d", 100]], { plan: "free", disabled: true })
+	]
+};
+const liveTone = (pool, total) => exports.badgeTone(exports.badgeValues(pool, total ? "total" : "lowest"), exports.hasHighPlan(pool));
+check("the live `prolite` pool counts as pro-or-above", exports.hasHighPlan(livePool) === true);
+check(
+	"the live 16%/87% pool is no longer coloured by its 5h window",
+	exports.remainingText(exports.badgeValues(livePool, "total")) === "16%/87%" && liveTone(livePool, true) === "ok",
+	`${exports.remainingText(exports.badgeValues(livePool, "total"))} → ${liveTone(livePool, true)}`
+);
+check(
+	"the same figures on a plus-only pool still warn",
+	liveTone({ accounts: [accountFixture("plus", [["5h", 16], ["7d", 18]], { plan: "plus" })] }, true) === "warn"
 );
 check("badgeTone without a pro plan: the short window decides", exports.badgeTone({ "5h": 0, "7d": 104, "30d": null }, false) === "bad");
 check("badgeTone with a pro plan: a drained short window stays green", exports.badgeTone({ "5h": 0, "7d": 104, "30d": null }, true) === "ok", exports.badgeTone({ "5h": 0, "7d": 104, "30d": null }, true));
@@ -1812,8 +1839,8 @@ const badgeClassWith = async (plan) => {
 	});
 	return className;
 };
-const proBadge = await badgeClassWith("pro");
-check("a pro plan renders a drained short window without the warning colour", proBadge.includes("cps_ok"), proBadge);
+const proBadge = await badgeClassWith("prolite");
+check("a prolite account renders a drained short window without the warning colour", proBadge.includes("cps_ok"), proBadge);
 const plusBadge = await badgeClassWith("plus");
 check("the same figures on a plus plan render the warning colour", plusBadge.includes("cps_bad"), plusBadge);
 toneAccount.plan = savedPlan;
